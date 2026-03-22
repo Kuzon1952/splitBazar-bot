@@ -1,3 +1,4 @@
+from datetime import datetime
 import random
 import string
 from bot.database.connection import get_connection
@@ -182,22 +183,27 @@ def get_group_by_id(group_id):
 # ─── EXPENSE QUERIES ─────────────────────────────────────
 
 def add_expense(group_id, paid_by, total_amount, shared_amount,
-                personal_amount, split_type, description, receipt_file_id=None):
+                personal_amount, split_type, description,
+                receipt_file_id=None, expense_date=None):
     conn = get_connection()
     cursor = conn.cursor()
+    if expense_date is None:
+        expense_date = datetime.now().date()
     cursor.execute("""
-        INSERT INTO expenses (group_id, paid_by, total_amount, shared_amount,
-                              personal_amount, split_type, description, receipt_file_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO expenses (group_id, paid_by, total_amount,
+                              shared_amount, personal_amount,
+                              split_type, description,
+                              receipt_file_id, expense_date)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
     """, (group_id, paid_by, total_amount, shared_amount,
-          personal_amount, split_type, description, receipt_file_id))
+          personal_amount, split_type, description,
+          receipt_file_id, expense_date))
     expense_id = cursor.fetchone()[0]
     conn.commit()
     cursor.close()
     conn.close()
     return expense_id
-
 
 def add_expense_split(expense_id, user_id, amount, percentage=None):
     conn = get_connection()
@@ -283,3 +289,175 @@ def get_first_expense_date(group_id):
     cursor.close()
     conn.close()
     return result
+
+# ─── EDIT & DELETE QUERIES ───────────────────────────────
+
+def get_expenses_by_date(group_id, date):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT e.id, e.paid_by, e.total_amount, e.shared_amount,
+               e.personal_amount, e.split_type, e.description,
+               e.expense_date, u.first_name
+        FROM expenses e
+        JOIN users u ON e.paid_by = u.id
+        WHERE e.group_id = %s
+        AND e.expense_date = %s
+        AND e.is_deleted = FALSE
+        ORDER BY e.created_at
+    """, (group_id, date))
+    expenses = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return expenses
+
+
+def get_expense_by_id(expense_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT e.id, e.paid_by, e.total_amount, e.shared_amount,
+               e.personal_amount, e.split_type, e.description,
+               e.expense_date, u.first_name, e.group_id
+        FROM expenses e
+        JOIN users u ON e.paid_by = u.id
+        WHERE e.id = %s
+    """, (expense_id,))
+    expense = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return expense
+
+
+def update_expense(expense_id, field, value):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"""
+        UPDATE expenses SET {field} = %s
+        WHERE id = %s
+    """, (value, expense_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def soft_delete_expense(expense_id, deleted_by):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE expenses
+        SET is_deleted = TRUE,
+            deleted_by = %s,
+            deleted_at = CURRENT_TIMESTAMP
+        WHERE id = %s
+    """, (deleted_by, expense_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_deleted_expenses(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT e.id, e.paid_by, e.total_amount, e.shared_amount,
+               e.personal_amount, e.description, e.expense_date,
+               e.deleted_at, u.first_name,
+               u2.first_name as deleted_by_name
+        FROM expenses e
+        JOIN users u ON e.paid_by = u.id
+        LEFT JOIN users u2 ON e.deleted_by = u2.id
+        WHERE e.group_id = %s
+        AND e.is_deleted = TRUE
+        AND e.deleted_at > CURRENT_TIMESTAMP - INTERVAL '3 months'
+        ORDER BY e.deleted_at DESC
+    """, (group_id,))
+    expenses = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return expenses
+
+
+def restore_expense(expense_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE expenses
+        SET is_deleted = FALSE,
+            deleted_by = NULL,
+            deleted_at = NULL
+        WHERE id = %s
+    """, (expense_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_group_admin(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT admin_id FROM groups WHERE id = %s
+    """, (group_id,))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return result[0] if result else None
+
+
+def create_edit_request(expense_id, requested_by, group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO edit_requests
+        (expense_id, requested_by, group_id)
+        VALUES (%s, %s, %s)
+        RETURNING id
+    """, (expense_id, requested_by, group_id))
+    request_id = cursor.fetchone()[0]
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return request_id
+
+
+def update_edit_request(request_id, status):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE edit_requests
+        SET status = %s, responded_at = CURRENT_TIMESTAMP
+        WHERE id = %s
+    """, (status, request_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_edit_request(request_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT er.id, er.expense_id, er.requested_by,
+               er.group_id, er.status, u.first_name
+        FROM edit_requests er
+        JOIN users u ON er.requested_by = u.id
+        WHERE er.id = %s
+    """, (request_id,))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return result
+
+
+def get_member_join_date(group_id, user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT joined_at FROM group_members
+        WHERE group_id = %s AND user_id = %s
+    """, (group_id, user_id))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return result[0] if result else None

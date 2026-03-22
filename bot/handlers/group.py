@@ -136,6 +136,10 @@ async def enter_invite_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     return ConversationHandler.END
 
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    await update.message.reply_text("❌ Cancelled.")
+    return ConversationHandler.END
 
 def register_group_handlers(app):
     conv_handler = ConversationHandler(
@@ -148,6 +152,9 @@ def register_group_handlers(app):
             CHOOSE_CURRENCY: [CallbackQueryHandler(choose_currency, pattern="^currency_")],
             ENTER_INVITE_CODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_invite_code)],
         },
-        fallbacks=[]
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+        ],
+        allow_reentry=True
     )
     app.add_handler(conv_handler)

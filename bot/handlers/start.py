@@ -6,8 +6,8 @@ from telegram.ext import ContextTypes, CommandHandler
 def main_menu_keyboard():
     keyboard = [
         ["➕ Add Expense", "📊 View Report"],
-        ["👥 My Groups", "🎯 My Target"],
-        ["⚙️ Settings"]
+        ["✏️ Edit Expense", "👥 My Groups"],
+        ["🎯 My Target", "⚙️ Settings"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
