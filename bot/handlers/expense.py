@@ -1,3 +1,5 @@
+from bot.handlers.notifications import send_large_expense_alert
+from bot.database.queries import get_group_by_id
 from bot.handlers.target import check_budget_alert
 from bot.database.queries import get_group_by_id
 from datetime import datetime, timedelta
@@ -228,10 +230,6 @@ async def save_expense(update: Update, context, receipt_file_id):
     now = datetime.now()
     expense_date = context.user_data.get('expense_date', now.date())
 
-#    expense_id = add_expense(
-#        group_id, user.id, total, shared,
- #       personal, split_type, description, receipt_file_id
-  #  )
 
     expense_id = add_expense(
         group_id, user.id, total, shared,
@@ -246,12 +244,26 @@ async def save_expense(update: Update, context, receipt_file_id):
             for member in active_members:
                 add_expense_split(expense_id, member[0], split_amount)
 
-        # Check budget alert
-        group = get_group_by_id(group_id)
-        if group:
-            await check_budget_alert(
-                context, user.id, group_id, group[2]
-            )
+                # Check budget alert
+                group = get_group_by_id(group_id)
+                if group:
+                    await check_budget_alert(
+                        context, user.id, group_id, group[2]
+                    )
+
+                    # Large expense alert (if shared > 1000)
+                    if shared > 1000:
+                        await send_large_expense_alert(
+                            context,
+                            group_id,
+                            group[1],
+                            group[2],
+                            user.first_name,
+                            total,
+                            split_type,
+                            description,
+                            expense_date.strftime('%d.%m.%Y')
+                        )
 
 
     await update.message.reply_text(
