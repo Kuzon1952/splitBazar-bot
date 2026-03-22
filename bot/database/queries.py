@@ -530,3 +530,101 @@ def get_expenses_for_report(group_id, start_date, end_date):
     cursor.close()
     conn.close()
     return expenses
+
+# ─── NOTIFICATION QUERIES ────────────────────────────────
+
+def get_all_active_groups():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, name, currency, admin_id
+        FROM groups
+    """)
+    groups = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return groups
+
+
+def get_active_group_members(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT u.id, u.first_name
+        FROM users u
+        JOIN group_members gm ON u.id = gm.user_id
+        WHERE gm.group_id = %s
+        AND gm.is_active = TRUE
+    """, (group_id,))
+    members = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return members
+
+
+def get_last_expense_date(group_id, user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT MAX(expense_date)
+        FROM expenses
+        WHERE group_id = %s
+        AND paid_by = %s
+        AND is_deleted = FALSE
+    """, (group_id, user_id))
+    result = cursor.fetchone()[0]
+    cursor.close()
+    conn.close()
+    return result
+
+
+def get_group_last_reset(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT last_reset FROM groups
+        WHERE id = %s
+    """, (group_id,))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return result[0] if result else None
+
+
+def update_group_last_reset(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE groups
+        SET last_reset = CURRENT_TIMESTAMP
+        WHERE id = %s
+    """, (group_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def is_group_locked(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT is_locked FROM groups
+        WHERE id = %s
+    """, (group_id,))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return result[0] if result else False
+
+
+def set_group_locked(group_id, locked):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE groups
+        SET is_locked = %s
+        WHERE id = %s
+    """, (locked, group_id))
+    conn.commit()
+    cursor.close()
+    conn.close()

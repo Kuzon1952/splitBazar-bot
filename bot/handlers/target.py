@@ -39,7 +39,7 @@ async def my_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if target:
-            percentage = (spent / target) * 100
+            percentage = (spent / float(target)) * 100
             if percentage >= 100:
                 status = "🚨 EXCEEDED"
             elif percentage >= 80:
@@ -51,9 +51,9 @@ async def my_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             text += (
                 f"🏠 *{group[1]}*\n"
-                f"   Target : {target:.2f} {group[2]}\n"
+                f"   Target : {float(target):.2f} {group[2]}\n"
                 f"   Spent  : {spent:.2f} {group[2]}\n"
-                f"   Left   : {max(0, target-spent):.2f} {group[2]}\n"
+                f"   Left   : {max(0, float(target)-spent):.2f} {group[2]}\n"
                 f"   {bar} {percentage:.1f}%\n"
                 f"   Status : {status}\n\n"
             )
@@ -113,7 +113,7 @@ async def select_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if current_target:
         text += (
-            f"Current target : {current_target:.2f}\n"
+            f"Current target : {float(current_target):.2f}\n"
             f"Already spent  : {current_spent:.2f}\n\n"
         )
 
