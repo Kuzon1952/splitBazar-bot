@@ -263,6 +263,15 @@ async def generate_report(message, group_id, start_date, end_date, period_label)
 
     await message.reply_text(report, parse_mode="Markdown")
 
+from telegram.ext import CommandHandler
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    await update.message.reply_text(
+        "❌ Cancelled. Use the menu to continue.",
+    )
+    return ConversationHandler.END
+
 
 def register_report_handlers(app):
     conv_handler = ConversationHandler(
@@ -295,6 +304,10 @@ def register_report_handlers(app):
                 )
             ],
         },
-        fallbacks=[]
+        fallbacks=[
+            MessageHandler(filters.Regex("^❌ Cancel$"), cancel),
+            CommandHandler("cancel", cancel)
+        ],
+        allow_reentry=True
     )
     app.add_handler(conv_handler)

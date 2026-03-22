@@ -1,23 +1,26 @@
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     ContextTypes, MessageHandler, ConversationHandler,
-    CallbackQueryHandler, filters
+    CallbackQueryHandler, filters, CommandHandler
 )
 from bot.database.queries import (
     save_user, get_user_groups, add_expense,
-    add_expense_split, get_active_members_at_date
+    add_expense_split, get_active_members_at_date,
+    get_member_join_date
 )
 from datetime import datetime
 
 # Conversation states
 SELECT_GROUP = 0
+SELECT_DATE = 7
+ENTER_DATE = 8
 SELECT_TYPE = 1
 ENTER_TOTAL = 2
 ENTER_SHARED = 3
 SELECT_SPLIT = 4
 ENTER_DESCRIPTION = 5
 UPLOAD_RECEIPT = 6
-
 
 async def add_expense_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -54,17 +57,29 @@ async def select_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = int(query.data.split("_")[2])
     context.user_data['group_id'] = group_id
 
+    today = datetime.now()
+    yesterday = today - timedelta(days=1)
+
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🍽️ Shared (for everyone)", callback_data="type_shared")],
-        [InlineKeyboardButton("👤 Personal only", callback_data="type_personal")],
-        [InlineKeyboardButton("🔀 Mixed (shared + personal)", callback_data="type_mixed")],
+        [InlineKeyboardButton(
+            f"📅 Today ({today.strftime('%d.%m.%Y')})",
+            callback_data="expdate_today"
+        )],
+        [InlineKeyboardButton(
+            f"📅 Yesterday ({yesterday.strftime('%d.%m.%Y')})",
+            callback_data="expdate_yesterday"
+        )],
+        [InlineKeyboardButton(
+            "📅 Earlier date",
+            callback_data="expdate_earlier"
+        )],
     ])
 
     await query.message.reply_text(
-        "What type of purchase is this?",
+        "📅 When did you make this purchase?",
         reply_markup=keyboard
     )
-    return SELECT_TYPE
+    return SELECT_DATE
 
 
 async def select_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -207,11 +222,19 @@ async def save_expense(update: Update, context, receipt_file_id):
     personal = context.user_data['personal_amount']
     split_type = context.user_data.get('split_type', 'equal')
     description = context.user_data.get('description')
+    #now = datetime.now()
     now = datetime.now()
+    expense_date = context.user_data.get('expense_date', now.date())
+
+#    expense_id = add_expense(
+#        group_id, user.id, total, shared,
+ #       personal, split_type, description, receipt_file_id
+  #  )
 
     expense_id = add_expense(
         group_id, user.id, total, shared,
-        personal, split_type, description, receipt_file_id
+        personal, split_type, description,
+        receipt_file_id, expense_date
     )
 
     if shared > 0:
@@ -233,25 +256,170 @@ async def save_expense(update: Update, context, receipt_file_id):
         parse_mode="Markdown"
     )
 
+async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    date_choice = query.data.split("_")[1]
+    today = datetime.now()
+    group_id = context.user_data['group_id']
+    user = query.from_user
+
+    if date_choice == "today":
+        context.user_data['expense_date'] = today.date()
+        await show_purchase_type(query.message)
+        return SELECT_TYPE
+
+    elif date_choice == "yesterday":
+        yesterday = today - timedelta(days=1)
+        context.user_data['expense_date'] = yesterday.date()
+        await show_purchase_type(query.message)
+        return SELECT_TYPE
+
+    elif date_choice == "earlier":
+        join_date = get_member_join_date(group_id, user.id)
+        context.user_data['join_date'] = join_date
+        await query.message.reply_text(
+            f"📅 Enter purchase date:\n\n"
+            f"Format: `DD.MM.YYYY`\n"
+            f"Earliest: `{join_date.strftime('%d.%m.%Y')}` "
+            f"(your join date)\n"
+            f"Latest: `{today.strftime('%d.%m.%Y')}` (today)",
+            parse_mode="Markdown"
+        )
+        return ENTER_DATE
+
+
+async def enter_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    today = datetime.now().date()
+    join_date = context.user_data['join_date']
+
+    try:
+        entered_date = datetime.strptime(
+            update.message.text.strip(), "%d.%m.%Y"
+        ).date()
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Wrong format!\n"
+            "Please use `DD.MM.YYYY`\n"
+            "Example: `20.03.2026`",
+            parse_mode="Markdown"
+        )
+        return ENTER_DATE
+
+    if entered_date > today:
+        await update.message.reply_text(
+            f"❌ Cannot enter future date!\n"
+            f"Latest allowed: `{today.strftime('%d.%m.%Y')}`",
+            parse_mode="Markdown"
+        )
+        return ENTER_DATE
+
+    if entered_date < join_date.date():
+        await update.message.reply_text(
+            f"❌ Cannot enter date before you joined!\n"
+            f"Earliest allowed: "
+            f"`{join_date.strftime('%d.%m.%Y')}`",
+            parse_mode="Markdown"
+        )
+        return ENTER_DATE
+
+    context.user_data['expense_date'] = entered_date
+    await update.message.reply_text(
+        f"✅ Date: `{entered_date.strftime('%d.%m.%Y')}`",
+        parse_mode="Markdown"
+    )
+    await show_purchase_type(update.message)
+    return SELECT_TYPE
+
+
+async def show_purchase_type(message):
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            "🍽️ Shared (for everyone)",
+            callback_data="type_shared"
+        )],
+        [InlineKeyboardButton(
+            "👤 Personal only",
+            callback_data="type_personal"
+        )],
+        [InlineKeyboardButton(
+            "🔀 Mixed (shared + personal)",
+            callback_data="type_mixed"
+        )],
+    ])
+    await message.reply_text(
+        "What type of purchase is this?",
+        reply_markup=keyboard
+    )
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    await update.message.reply_text("❌ Cancelled.")
+    return ConversationHandler.END
 
 def register_expense_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex("^➕ Add Expense$"), add_expense_start)
+            MessageHandler(
+                filters.Regex("^➕ Add Expense$"),
+                add_expense_start
+            )
         ],
         states={
-            SELECT_GROUP: [CallbackQueryHandler(select_group, pattern="^exp_group_")],
-            SELECT_TYPE: [CallbackQueryHandler(select_type, pattern="^type_")],
-            ENTER_TOTAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_total)],
-            ENTER_SHARED: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_shared)],
-            SELECT_SPLIT: [CallbackQueryHandler(select_split, pattern="^split_")],
+            SELECT_GROUP: [
+                CallbackQueryHandler(
+                    select_group, pattern="^exp_group_"
+                )
+            ],
+            SELECT_DATE: [
+                CallbackQueryHandler(
+                    select_date, pattern="^expdate_"
+                )
+            ],
+            ENTER_DATE: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    enter_date
+                )
+            ],
+            SELECT_TYPE: [
+                CallbackQueryHandler(
+                    select_type, pattern="^type_"
+                )
+            ],
+            ENTER_TOTAL: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    enter_total
+                )
+            ],
+            ENTER_SHARED: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    enter_shared
+                )
+            ],
+            SELECT_SPLIT: [
+                CallbackQueryHandler(
+                    select_split, pattern="^split_"
+                )
+            ],
             ENTER_DESCRIPTION: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, enter_description),
-                MessageHandler(filters.Regex("^/skip$"), enter_description)
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    enter_description
+                )
             ],
             UPLOAD_RECEIPT: [
-                MessageHandler(filters.PHOTO | filters.Document.ALL, upload_receipt),
-                MessageHandler(filters.Regex("^/skip$"), skip_receipt)
+                MessageHandler(
+                    filters.PHOTO | filters.Document.ALL,
+                    upload_receipt
+                ),
+                MessageHandler(
+                    filters.Regex("^/skip$"),
+                    skip_receipt
+                )
             ],
         },
         fallbacks=[]
