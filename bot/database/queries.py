@@ -510,3 +510,23 @@ def get_user_spending_this_month(user_id, group_id, month, year):
     cursor.close()
     conn.close()
     return float(result[0]) if result else 0.0
+
+def get_expenses_for_report(group_id, start_date, end_date):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT e.id, e.paid_by, e.total_amount,
+               e.shared_amount, e.personal_amount,
+               e.split_type, e.description,
+               e.expense_date, u.first_name
+        FROM expenses e
+        JOIN users u ON e.paid_by = u.id
+        WHERE e.group_id = %s
+        AND e.expense_date BETWEEN %s AND %s
+        AND e.is_deleted = FALSE
+        ORDER BY e.expense_date
+    """, (group_id, start_date, end_date))
+    expenses = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return expenses
