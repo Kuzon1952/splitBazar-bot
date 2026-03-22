@@ -25,6 +25,7 @@ SELECT_REMOVE_MEMBER = 4
 CONFIRM_REMOVE = 5
 CONFIRM_LEAVE = 6
 SEND_LEAVE_REQUEST = 7
+VERIFY_RESET_PASSWORD = 10
 
 
 async def settings_start(
@@ -405,29 +406,14 @@ async def handle_settings_action(
 
     # ── Reset Group ──────────────────────────────────────
     elif action == "reset":
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(
-                "✅ Yes, Reset",
-                callback_data="setreset_yes"
-            )],
-            [InlineKeyboardButton(
-                "❌ Cancel",
-                callback_data="setreset_no"
-            )],
-        ])
-
         await query.message.reply_text(
             f"🔄 *Reset Group — {group[1]}?*\n\n"
-            f"This will:\n"
-            f"✅ Archive all expense data\n"
-            f"✅ Send final report to all members\n"
-            f"✅ Clear all expenses\n"
-            f"✅ Keep group and members\n\n"
-            f"⚠️ This cannot be undone!",
-            parse_mode="Markdown",
-            reply_markup=keyboard
+            f"⚠️ This cannot be undone!\n\n"
+            f"🔐 Enter your reset password to continue:",
+            parse_mode="Markdown"
         )
-        return SHOW_MENU
+        context.user_data['settings_resetting'] = True
+        return VERIFY_RESET_PASSWORD
 
     elif action == "nothing":
         return SHOW_MENU
@@ -665,51 +651,6 @@ async def handle_restore(
     return SHOW_MENU
 
 
-async def handle_reset(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-):
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "setreset_no":
-        await query.message.reply_text("❌ Cancelled.")
-        return ConversationHandler.END
-
-    group_id = context.user_data['settings_group_id']
-    group = get_group_by_id(group_id)
-
-    from bot.database.queries import update_group_last_reset, set_group_locked
-    update_group_last_reset(group_id)
-    set_group_locked(group_id, False)
-
-    # Notify all members
-    members = get_active_group_members(group_id)
-    for member in members:
-        try:
-            await context.bot.send_message(
-                chat_id=member[0],
-                text=(
-                    f"✅ *[{group[1]}] Group Reset!*\n\n"
-                    f"Fresh start! 🎉\n"
-                    f"New period started: "
-                    f"{datetime.now().strftime('%d.%m.%Y')}"
-                ),
-                parse_mode="Markdown"
-            )
-        except Exception:
-            pass
-
-    await query.message.reply_text(
-        f"✅ *Group Reset Complete!*\n\n"
-        f"📊 All members notified.\n"
-        f"🗓️ New period started: "
-        f"{datetime.now().strftime('%d.%m.%Y')}\n\n"
-        f"Fresh start! 🎉",
-        parse_mode="Markdown"
-    )
-    return ConversationHandler.END
-
-
 async def handle_leave_request(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
@@ -795,6 +736,112 @@ async def cancel(
     return ConversationHandler.END
 
 
+async def verify_reset_password_settings(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    from bot.database.queries import (
+        verify_reset_password, archive_expenses,
+        update_group_last_reset, set_group_locked,
+        get_first_expense_date, get_balances,
+        get_expenses_for_report
+    )
+    from bot.utils.calculations import (
+        calculate_balances, calculate_settlements
+    )
+
+    password = update.message.text.strip()
+    group_id = context.user_data['settings_group_id']
+    group = get_group_by_id(group_id)
+    members = get_active_group_members(group_id)
+
+    is_correct = verify_reset_password(group_id, password)
+
+    if not is_correct:
+        await update.message.reply_text(
+            "❌ *Wrong password!*\n\n"
+            "Reset cancelled for security.\n"
+            "Please try again from Settings.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+
+    # Password correct — proceed with reset
+    await update.message.reply_text(
+        "✅ Password correct!\n\n"
+        "⏳ Processing reset..."
+    )
+
+    now = datetime.now()
+    first_date = get_first_expense_date(group_id)
+    start_date = first_date if first_date else now.replace(day=1)
+    period_label = (
+        f"{start_date.strftime('%d.%m.%Y')} → "
+        f"{now.strftime('%d.%m.%Y')}"
+    )
+    currency = group[2]
+
+    expenses, splits = get_balances(
+        group_id, start_date, now
+    )
+
+    if expenses:
+        balances = calculate_balances(expenses, splits)
+        settlements = calculate_settlements(balances)
+
+        report = f"📊 FINAL REPORT — {group[1]}\n"
+        report += f"📅 {period_label}\n"
+        report += f"━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        for user_id, data in balances.items():
+            emoji = "✅" if abs(data['balance']) < 0.01 else (
+                "💚" if data['balance'] > 0 else "⚠️"
+            )
+            report += (
+                f"{emoji} {data['name']}\n"
+                f"   Balance: {data['balance']:+.2f} {currency}\n\n"
+            )
+
+        if settlements:
+            report += "💸 Settlement:\n"
+            for s in settlements:
+                report += (
+                    f"{s['from_name']} → {s['to_name']}: "
+                    f"{s['amount']:.2f} {currency}\n"
+                )
+
+        for member in members:
+            try:
+                await context.bot.send_message(
+                    chat_id=member[0],
+                    text=report
+                )
+            except Exception:
+                pass
+
+    archive_expenses(group_id)
+    update_group_last_reset(group_id)
+    set_group_locked(group_id, False)
+
+    for member in members:
+        try:
+            await context.bot.send_message(
+                chat_id=member[0],
+                text=(
+                    f"✅ [{group[1]}] Group Reset!\n\n"
+                    f"New period: {now.strftime('%d.%m.%Y')}\n"
+                    f"Fresh start! 🎉"
+                )
+            )
+        except Exception:
+            pass
+
+    await update.message.reply_text(
+        f"✅ *Group Reset Complete!*\n\n"
+        f"Fresh start! 🎉",
+        parse_mode="Markdown"
+    )
+    return ConversationHandler.END
+
 def register_settings_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
@@ -822,10 +869,6 @@ def register_settings_handlers(app):
                 CallbackQueryHandler(
                     handle_restore,
                     pattern="^setrestore_"
-                ),
-                CallbackQueryHandler(
-                    handle_reset,
-                    pattern="^setreset_"
                 ),
             ],
             SELECT_NEW_ADMIN: [
@@ -856,6 +899,12 @@ def register_settings_handlers(app):
                 CallbackQueryHandler(
                     handle_leave_request,
                     pattern="^leavereq_"
+                )
+            ],
+            VERIFY_RESET_PASSWORD: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    verify_reset_password_settings
                 )
             ],
         },
