@@ -5,6 +5,8 @@ import os
 
 from bot.handlers.start import register_start_handlers
 from bot.handlers.group import register_group_handlers
+from bot.handlers.expense import register_expense_handlers
+from bot.handlers.report import register_report_handlers
 
 load_dotenv()
 
@@ -24,6 +26,8 @@ def main():
 
     register_start_handlers(app)
     register_group_handlers(app)
+    register_expense_handlers(app)
+    register_report_handlers(app)
 
     logger.info("SplitBazar Bot is running...")
     app.run_polling()
