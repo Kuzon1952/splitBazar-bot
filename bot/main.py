@@ -4,11 +4,10 @@ from dotenv import load_dotenv
 import os
 
 from bot.handlers.start import register_start_handlers
+from bot.handlers.group import register_group_handlers
 
-# Load environment variables
 load_dotenv()
 
-# Logging setup
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
@@ -23,8 +22,8 @@ def main():
 
     app = Application.builder().token(token).build()
 
-    # Register handlers
     register_start_handlers(app)
+    register_group_handlers(app)
 
     logger.info("SplitBazar Bot is running...")
     app.run_polling()
