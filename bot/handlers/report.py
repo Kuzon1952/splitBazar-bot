@@ -1,3 +1,8 @@
+from bot.utils.report_generator import (
+    generate_pdf_report, generate_excel_report
+)
+from bot.database.queries import get_expenses_for_report
+import os
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     ContextTypes, MessageHandler, ConversationHandler,
@@ -104,7 +109,7 @@ async def select_period(update: Update, context: ContextTypes.DEFAULT_TYPE):
         period_label = "This month"
 
     group_id = context.user_data['report_group_id']
-    await generate_report(query.message, group_id, start_date, now, period_label)
+    await generate_report(query.message, context, group_id, start_date, now, period_label)
     return ConversationHandler.END
 
 
@@ -203,17 +208,20 @@ async def enter_custom_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await generate_report(
-        update.message, group_id,
+        update.message, context, group_id,
         start_date, end_date, period_label
     )
     return ConversationHandler.END
 
-
-async def generate_report(message, group_id, start_date, end_date, period_label):
+async def generate_report(
+    message, context, group_id, start_date, end_date, period_label
+):
     group = get_group_by_id(group_id)
     currency = group[2]
 
-    expenses, splits = get_balances(group_id, start_date, end_date)
+    expenses, splits = get_balances(
+        group_id, start_date, end_date
+    )
 
     if not expenses:
         await message.reply_text(
@@ -226,7 +234,11 @@ async def generate_report(message, group_id, start_date, end_date, period_label)
 
     balances = calculate_balances(expenses, splits)
     settlements = calculate_settlements(balances)
+    all_expenses = get_expenses_for_report(
+        group_id, start_date, end_date
+    )
 
+    # Build report text
     report = f"📊 *SplitBazar Report*\n"
     report += f"🏠 {group[1]}\n"
     report += f"📅 {period_label}\n"
@@ -261,7 +273,38 @@ async def generate_report(message, group_id, start_date, end_date, period_label)
     else:
         report += "✅ Everyone is settled!\n"
 
-    await message.reply_text(report, parse_mode="Markdown")
+    # Download buttons
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "📄 Download PDF",
+                callback_data=f"download_pdf_{group_id}"
+            ),
+            InlineKeyboardButton(
+                "📊 Download Excel",
+                callback_data=f"download_excel_{group_id}"
+            ),
+        ]
+    ])
+
+    await message.reply_text(
+        report,
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
+
+# Store data for download using bot_data
+    if 'report_cache' not in context.bot_data:
+        context.bot_data['report_cache'] = {}
+
+    context.bot_data['report_cache'][group_id] = {
+        'group_name': group[1],
+        'currency': currency,
+        'period_label': period_label,
+        'balances': balances,
+        'settlements': settlements,
+        'expenses': all_expenses,
+    }
 
 from telegram.ext import CommandHandler
 
@@ -273,11 +316,75 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+async def handle_download(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    query = update.callback_query
+    await query.answer()
+
+    parts = query.data.split("_")
+    file_type = parts[1]
+    group_id = int(parts[2])
+
+    cache = context.bot_data.get('report_cache', {})
+    data = cache.get(group_id)
+
+    if not data:
+        await query.message.reply_text(
+            "❌ Report expired. Please generate again."
+        )
+        return
+
+    await query.message.reply_text(
+        "⏳ Generating file, please wait..."
+    )
+
+    try:
+        if file_type == "pdf":
+            filepath = generate_pdf_report(
+                data['group_name'],
+                data['currency'],
+                data['period_label'],
+                data['balances'],
+                data['settlements'],
+                data['expenses']
+            )
+            with open(filepath, 'rb') as f:
+                await query.message.reply_document(
+                    document=f,
+                    filename=f"SplitBazar_{data['group_name']}.pdf",
+                    caption=f"📄 PDF Report\n{data['period_label']}"
+                )
+        else:
+            filepath = generate_excel_report(
+                data['group_name'],
+                data['currency'],
+                data['period_label'],
+                data['balances'],
+                data['settlements'],
+                data['expenses']
+            )
+            with open(filepath, 'rb') as f:
+                await query.message.reply_document(
+                    document=f,
+                    filename=f"SplitBazar_{data['group_name']}.xlsx",
+                    caption=f"📊 Excel Report\n{data['period_label']}"
+                )
+
+        # Cleanup temp file
+        os.remove(filepath)
+
+    except Exception as e:
+        await query.message.reply_text(
+            f"❌ Error generating file: {str(e)}"
+        )
+
 def register_report_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
             MessageHandler(
-                filters.Regex("^📊 View Report$"), view_report
+                filters.Regex("^📊 View Report$"),
+                view_report
             )
         ],
         states={
@@ -305,9 +412,14 @@ def register_report_handlers(app):
             ],
         },
         fallbacks=[
-            MessageHandler(filters.Regex("^❌ Cancel$"), cancel),
-            CommandHandler("cancel", cancel)
+            CommandHandler("cancel", cancel),
         ],
         allow_reentry=True
     )
+
     app.add_handler(conv_handler)
+    app.add_handler(
+        CallbackQueryHandler(
+            handle_download, pattern="^download_"
+        )
+    )
