@@ -12,6 +12,7 @@ CHOOSING_ACTION = 0
 ENTER_GROUP_NAME = 1
 CHOOSE_CURRENCY = 2
 ENTER_INVITE_CODE = 3
+SET_PASSWORD = 4
 
 
 async def my_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -107,15 +108,60 @@ async def choose_currency(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Also add creator as member
     join_group(result[1], user.id)
 
+    context.user_data['new_group_id'] = result[0]
+    context.user_data['new_group_invite'] = result[1]
+    context.user_data['new_group_name'] = group_name
+    context.user_data['new_group_currency'] = currency
+
     await query.message.reply_text(
         f"🎉 *Group Created!*\n\n"
-        f"Name     : {group_name}\n"
-        f"Currency : {currency}\n"
+        f"Name        : {group_name}\n"
+        f"Currency    : {currency}\n"
         f"Invite Code : `{result[1]}`\n\n"
-        f"Share this code with your friends to join!",
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔐 *Set Reset Password*\n\n"
+        f"Please set a password to protect\n"
+        f"group reset. You will need this\n"
+        f"password every time you reset.\n\n"
+        f"Enter your reset password:",
+        parse_mode="Markdown"
+    )
+    return SET_PASSWORD
+
+
+async def set_group_password(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    password = update.message.text.strip()
+
+    if len(password) < 4:
+        await update.message.reply_text(
+            "❌ Password must be at least 4 characters!\n\n"
+            "Enter a stronger password:"
+        )
+        return SET_PASSWORD
+
+    group_id = context.user_data['new_group_id']
+    group_name = context.user_data['new_group_name']
+    currency = context.user_data['new_group_currency']
+    invite_code = context.user_data['new_group_invite']
+
+    from bot.database.queries import set_reset_password
+    set_reset_password(group_id, password)
+
+    await update.message.reply_text(
+        f"✅ *Reset password set!*\n\n"
+        f"🏠 Group     : {group_name}\n"
+        f"💰 Currency  : {currency}\n"
+        f"🔑 Invite    : `{invite_code}`\n"
+        f"🔐 Password  : set ✅\n\n"
+        f"⚠️ Remember your reset password!\n"
+        f"You will need it to reset the group.\n\n"
+        f"Share invite code with your friends!",
         parse_mode="Markdown"
     )
     return ConversationHandler.END
+
 
 
 async def enter_invite_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -148,9 +194,29 @@ def register_group_handlers(app):
             CallbackQueryHandler(button_handler, pattern="^(create_group|join_group|group_)")
         ],
         states={
-            ENTER_GROUP_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_group_name)],
-            CHOOSE_CURRENCY: [CallbackQueryHandler(choose_currency, pattern="^currency_")],
-            ENTER_INVITE_CODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_invite_code)],
+            ENTER_GROUP_NAME: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    enter_group_name
+                )
+            ],
+            CHOOSE_CURRENCY: [
+                CallbackQueryHandler(
+                    choose_currency, pattern="^currency_"
+                )
+            ],
+            ENTER_INVITE_CODE: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    enter_invite_code
+                )
+            ],
+            SET_PASSWORD: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    set_group_password
+                )
+            ],
         },
         fallbacks=[
             CommandHandler("cancel", cancel),

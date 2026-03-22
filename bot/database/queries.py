@@ -923,3 +923,81 @@ def clear_done_items(group_id):
     conn.commit()
     cursor.close()
     conn.close()
+# ─── RESET SYSTEM QUERIES ────────────────────────────────
+
+def archive_expenses(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE expenses
+        SET is_deleted = TRUE,
+            deleted_at = CURRENT_TIMESTAMP
+        WHERE group_id = %s
+        AND is_deleted = FALSE
+    """, (group_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_reset_status(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT last_reset, is_locked
+        FROM groups WHERE id = %s
+    """, (group_id,))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return result
+
+
+def get_total_expenses_count(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM expenses
+        WHERE group_id = %s
+        AND is_deleted = FALSE
+    """, (group_id,))
+    result = cursor.fetchone()[0]
+    cursor.close()
+    conn.close()
+    return result
+
+import hashlib
+
+def set_reset_password(group_id, password):
+    hashed = hashlib.sha256(
+        password.encode()
+    ).hexdigest()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE groups
+        SET reset_password = %s
+        WHERE id = %s
+    """, (hashed, group_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def verify_reset_password(group_id, password):
+    hashed = hashlib.sha256(
+        password.encode()
+    ).hexdigest()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT reset_password
+        FROM groups WHERE id = %s
+    """, (group_id,))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if not result or not result[0]:
+        return False
+    return result[0] == hashed
