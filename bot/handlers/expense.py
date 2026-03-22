@@ -1,3 +1,5 @@
+from bot.handlers.target import check_budget_alert
+from bot.database.queries import get_group_by_id
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
@@ -243,6 +245,14 @@ async def save_expense(update: Update, context, receipt_file_id):
             split_amount = round(shared / len(active_members), 2)
             for member in active_members:
                 add_expense_split(expense_id, member[0], split_amount)
+
+        # Check budget alert
+        group = get_group_by_id(group_id)
+        if group:
+            await check_budget_alert(
+                context, user.id, group_id, group[2]
+            )
+
 
     await update.message.reply_text(
         f"✅ *Expense Saved!*\n\n"

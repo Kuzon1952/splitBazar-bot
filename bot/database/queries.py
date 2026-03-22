@@ -461,3 +461,52 @@ def get_member_join_date(group_id, user_id):
     cursor.close()
     conn.close()
     return result[0] if result else None
+
+
+# ─── BUDGET TARGET QUERIES ───────────────────────────────
+
+def set_budget_target(user_id, group_id, amount, month, year):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO budget_targets
+        (user_id, group_id, target_amount, month, year)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (user_id, group_id, month, year)
+        DO UPDATE SET target_amount = %s
+    """, (user_id, group_id, amount, month, year, amount))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_budget_target(user_id, group_id, month, year):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT target_amount FROM budget_targets
+        WHERE user_id = %s AND group_id = %s
+        AND month = %s AND year = %s
+    """, (user_id, group_id, month, year))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return result[0] if result else None
+
+
+def get_user_spending_this_month(user_id, group_id, month, year):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT COALESCE(SUM(shared_amount), 0)
+        FROM expenses
+        WHERE paid_by = %s
+        AND group_id = %s
+        AND EXTRACT(MONTH FROM expense_date) = %s
+        AND EXTRACT(YEAR FROM expense_date) = %s
+        AND is_deleted = FALSE
+    """, (user_id, group_id, month, year))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return float(result[0]) if result else 0.0
