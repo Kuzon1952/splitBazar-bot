@@ -923,3 +923,38 @@ def clear_done_items(group_id):
     conn.commit()
     cursor.close()
     conn.close()
+
+# ─── GROUP CHAT QUERIES ──────────────────────────────────
+
+def send_group_message(group_id, user_id, message):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO group_messages
+        (group_id, user_id, message)
+        VALUES (%s, %s, %s)
+        RETURNING id
+    """, (group_id, user_id, message))
+    msg_id = cursor.fetchone()[0]
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return msg_id
+
+
+def get_group_messages(group_id, limit=20):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT m.id, m.message, m.created_at,
+               u.first_name, u.id as user_id
+        FROM group_messages m
+        JOIN users u ON m.user_id = u.id
+        WHERE m.group_id = %s
+        ORDER BY m.created_at DESC
+        LIMIT %s
+    """, (group_id, limit))
+    messages = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return list(reversed(messages))
