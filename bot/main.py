@@ -11,6 +11,7 @@ from bot.handlers.edit import register_edit_handlers
 from bot.handlers.target import register_target_handlers
 from bot.handlers.notifications import setup_notifications
 from bot.handlers.leave import register_leave_handlers
+from bot.handlers.settings import register_settings_handlers
 
 load_dotenv()
 
@@ -36,6 +37,7 @@ def main():
     register_target_handlers(app)
     setup_notifications(app)
     register_leave_handlers(app)
+    register_settings_handlers(app)
 
     logger.info("SplitBazar Bot is running...")
     app.run_polling()
