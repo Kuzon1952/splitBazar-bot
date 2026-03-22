@@ -7,7 +7,8 @@ def main_menu_keyboard():
     keyboard = [
         ["➕ Add Expense", "📊 View Report"],
         ["✏️ Edit Expense", "👥 My Groups"],
-        ["🎯 My Target", "⚙️ Settings"]
+        ["🎯 My Target", "⚙️ Settings"],
+        ["❌ Leave Group", "🚪 Remove Member"]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 

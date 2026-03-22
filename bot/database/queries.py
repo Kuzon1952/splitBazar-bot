@@ -628,3 +628,70 @@ def set_group_locked(group_id, locked):
     conn.commit()
     cursor.close()
     conn.close()
+
+# ─── MEMBER LEAVE QUERIES ────────────────────────────────
+
+def leave_group(group_id, user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE group_members
+        SET is_active = FALSE,
+            left_at = CURRENT_TIMESTAMP
+        WHERE group_id = %s
+        AND user_id = %s
+    """, (group_id, user_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_frozen_balance(group_id, user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Total shared paid by user
+    cursor.execute("""
+        SELECT COALESCE(SUM(shared_amount), 0)
+        FROM expenses
+        WHERE group_id = %s
+        AND paid_by = %s
+        AND is_deleted = FALSE
+    """, (group_id, user_id))
+    total_paid = float(cursor.fetchone()[0])
+
+    # Total fair share of user
+    cursor.execute("""
+        SELECT COALESCE(SUM(es.amount), 0)
+        FROM expense_splits es
+        JOIN expenses e ON es.expense_id = e.id
+        WHERE e.group_id = %s
+        AND es.user_id = %s
+        AND e.is_deleted = FALSE
+    """, (group_id, user_id))
+    fair_share = float(cursor.fetchone()[0])
+
+    cursor.close()
+    conn.close()
+
+    balance = total_paid - fair_share
+    return {
+        'paid': total_paid,
+        'share': fair_share,
+        'balance': balance
+    }
+
+
+def remove_member(group_id, user_id, admin_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE group_members
+        SET is_active = FALSE,
+            left_at = CURRENT_TIMESTAMP
+        WHERE group_id = %s
+        AND user_id = %s
+    """, (group_id, user_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
