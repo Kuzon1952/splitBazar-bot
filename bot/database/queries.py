@@ -832,3 +832,94 @@ def update_notification_settings(
     conn.commit()
     cursor.close()
     conn.close()
+
+# ─── TODO QUERIES ────────────────────────────────────────
+
+def add_todo_item(group_id, user_id, item_name, quantity=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO todo_items
+        (group_id, added_by, item_name, quantity)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id
+    """, (group_id, user_id, item_name, quantity))
+    item_id = cursor.fetchone()[0]
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return item_id
+
+
+def get_todo_items(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT t.id, t.item_name, t.quantity,
+               t.is_done, t.done_at,
+               u.first_name as added_by,
+               u2.first_name as done_by
+        FROM todo_items t
+        JOIN users u ON t.added_by = u.id
+        LEFT JOIN users u2 ON t.done_by = u2.id
+        WHERE t.group_id = %s
+        ORDER BY t.is_done ASC, t.created_at DESC
+    """, (group_id,))
+    items = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return items
+
+
+def mark_todo_done(item_id, user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE todo_items
+        SET is_done = TRUE,
+            done_by = %s,
+            done_at = CURRENT_TIMESTAMP
+        WHERE id = %s
+    """, (user_id, item_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def mark_todo_undone(item_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE todo_items
+        SET is_done = FALSE,
+            done_by = NULL,
+            done_at = NULL
+        WHERE id = %s
+    """, (item_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def delete_todo_item(item_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        DELETE FROM todo_items WHERE id = %s
+    """, (item_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def clear_done_items(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        DELETE FROM todo_items
+        WHERE group_id = %s
+        AND is_done = TRUE
+    """, (group_id,))
+    conn.commit()
+    cursor.close()
+    conn.close()
