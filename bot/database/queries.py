@@ -104,3 +104,182 @@ def get_group_members(group_id):
     cursor.close()
     conn.close()
     return members
+
+# ─── REPORT QUERIES ──────────────────────────────────────
+
+def get_balances(group_id, start_date, end_date):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Get all expenses in period
+    cursor.execute("""
+        SELECT e.id, e.paid_by, e.shared_amount, e.created_at, u.first_name
+        FROM expenses e
+        JOIN users u ON e.paid_by = u.id
+        WHERE e.group_id = %s
+        AND e.created_at BETWEEN %s AND %s
+        AND e.shared_amount > 0
+        ORDER BY e.created_at
+    """, (group_id, start_date, end_date))
+    expenses = cursor.fetchall()
+
+    # Get all splits in period
+    cursor.execute("""
+        SELECT es.expense_id, es.user_id, es.amount, u.first_name
+        FROM expense_splits es
+        JOIN users u ON es.user_id = u.id
+        JOIN expenses e ON es.expense_id = e.id
+        WHERE e.group_id = %s
+        AND e.created_at BETWEEN %s AND %s
+    """, (group_id, start_date, end_date))
+    splits = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    return expenses, splits
+
+
+def get_member_spending(group_id, start_date, end_date):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT u.id, u.first_name,
+               COALESCE(SUM(e.shared_amount), 0) as total_paid,
+               COALESCE(SUM(es.amount), 0) as fair_share
+        FROM users u
+        JOIN group_members gm ON u.id = gm.user_id
+        LEFT JOIN expenses e ON e.paid_by = u.id
+            AND e.group_id = %s
+            AND e.created_at BETWEEN %s AND %s
+        LEFT JOIN expense_splits es ON es.user_id = u.id
+            JOIN expenses e2 ON es.expense_id = e2.id
+            AND e2.group_id = %s
+            AND e2.created_at BETWEEN %s AND %s
+        WHERE gm.group_id = %s
+        AND gm.is_active = TRUE
+        GROUP BY u.id, u.first_name
+    """, (group_id, start_date, end_date,
+          group_id, start_date, end_date,
+          group_id))
+    result = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return result
+
+
+def get_group_by_id(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, name, currency, invite_code, admin_id
+        FROM groups WHERE id = %s
+    """, (group_id,))
+    group = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return group
+
+# ─── EXPENSE QUERIES ─────────────────────────────────────
+
+def add_expense(group_id, paid_by, total_amount, shared_amount,
+                personal_amount, split_type, description, receipt_file_id=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO expenses (group_id, paid_by, total_amount, shared_amount,
+                              personal_amount, split_type, description, receipt_file_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+    """, (group_id, paid_by, total_amount, shared_amount,
+          personal_amount, split_type, description, receipt_file_id))
+    expense_id = cursor.fetchone()[0]
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return expense_id
+
+
+def add_expense_split(expense_id, user_id, amount, percentage=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO expense_splits (expense_id, user_id, amount, percentage)
+        VALUES (%s, %s, %s, %s)
+    """, (expense_id, user_id, amount, percentage))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_active_members_at_date(group_id, date):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT u.id, u.first_name
+        FROM users u
+        JOIN group_members gm ON u.id = gm.user_id
+        WHERE gm.group_id = %s
+        AND gm.joined_at <= %s
+        AND (gm.left_at IS NULL OR gm.left_at > %s)
+        AND gm.is_active = TRUE
+    """, (group_id, date, date))
+    members = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return members
+
+
+# ─── REPORT QUERIES ──────────────────────────────────────
+
+def get_balances(group_id, start_date, end_date):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT e.id, e.paid_by, e.shared_amount, e.created_at, u.first_name
+        FROM expenses e
+        JOIN users u ON e.paid_by = u.id
+        WHERE e.group_id = %s
+        AND e.created_at BETWEEN %s AND %s
+        AND e.shared_amount > 0
+        ORDER BY e.created_at
+    """, (group_id, start_date, end_date))
+    expenses = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT es.expense_id, es.user_id, es.amount, u.first_name
+        FROM expense_splits es
+        JOIN users u ON es.user_id = u.id
+        JOIN expenses e ON es.expense_id = e.id
+        WHERE e.group_id = %s
+        AND e.created_at BETWEEN %s AND %s
+    """, (group_id, start_date, end_date))
+    splits = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    return expenses, splits
+
+
+def get_group_by_id(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, name, currency, invite_code, admin_id
+        FROM groups WHERE id = %s
+    """, (group_id,))
+    group = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return group
+
+def get_first_expense_date(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT MIN(created_at) FROM expenses
+        WHERE group_id = %s
+    """, (group_id,))
+    result = cursor.fetchone()[0]
+    cursor.close()
+    conn.close()
+    return result
