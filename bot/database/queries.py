@@ -695,3 +695,140 @@ def remove_member(group_id, user_id, admin_id):
     conn.commit()
     cursor.close()
     conn.close()
+
+# ─── SETTINGS QUERIES ────────────────────────────────────
+
+def transfer_admin(group_id, new_admin_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE groups SET admin_id = %s
+        WHERE id = %s
+    """, (new_admin_id, group_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def generate_new_invite_code(group_id):
+    import random
+    import string
+    conn = get_connection()
+    cursor = conn.cursor()
+    new_code = ''.join(
+        random.choices(
+            string.ascii_uppercase + string.digits, k=6
+        )
+    )
+    cursor.execute("""
+        UPDATE groups SET invite_code = %s
+        WHERE id = %s
+    """, (new_code, group_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return new_code
+
+
+def get_user_expense_history(user_id, group_id, limit=10):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT e.id, e.total_amount, e.shared_amount,
+               e.personal_amount, e.split_type,
+               e.description, e.expense_date,
+               g.name as group_name, g.currency
+        FROM expenses e
+        JOIN groups g ON e.group_id = g.id
+        WHERE e.paid_by = %s
+        AND e.group_id = %s
+        AND e.is_deleted = FALSE
+        ORDER BY e.expense_date DESC
+        LIMIT %s
+    """, (user_id, group_id, limit))
+    history = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return history
+
+
+def get_user_summary(user_id, group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    now = datetime.now()
+
+    # Total spent this month
+    cursor.execute("""
+        SELECT COALESCE(SUM(total_amount), 0)
+        FROM expenses
+        WHERE paid_by = %s
+        AND group_id = %s
+        AND EXTRACT(MONTH FROM expense_date) = %s
+        AND EXTRACT(YEAR FROM expense_date) = %s
+        AND is_deleted = FALSE
+    """, (user_id, group_id, now.month, now.year))
+    total_spent = float(cursor.fetchone()[0])
+
+    # Total shared paid this month
+    cursor.execute("""
+        SELECT COALESCE(SUM(shared_amount), 0)
+        FROM expenses
+        WHERE paid_by = %s
+        AND group_id = %s
+        AND EXTRACT(MONTH FROM expense_date) = %s
+        AND EXTRACT(YEAR FROM expense_date) = %s
+        AND is_deleted = FALSE
+    """, (user_id, group_id, now.month, now.year))
+    shared_spent = float(cursor.fetchone()[0])
+
+    # Balance
+    cursor.execute("""
+        SELECT COALESCE(SUM(es.amount), 0)
+        FROM expense_splits es
+        JOIN expenses e ON es.expense_id = e.id
+        WHERE es.user_id = %s
+        AND e.group_id = %s
+        AND e.is_deleted = FALSE
+    """, (user_id, group_id))
+    fair_share = float(cursor.fetchone()[0])
+
+    cursor.close()
+    conn.close()
+
+    balance = shared_spent - fair_share
+    return {
+        'total_spent': total_spent,
+        'shared_spent': shared_spent,
+        'fair_share': fair_share,
+        'balance': balance
+    }
+
+
+def get_notification_settings(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT inactivity_reminder, large_expense_alert
+        FROM users
+        WHERE id = %s
+    """, (user_id,))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return result
+
+
+def update_notification_settings(
+    user_id, inactivity, large_expense
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE users
+        SET inactivity_reminder = %s,
+            large_expense_alert = %s
+        WHERE id = %s
+    """, (inactivity, large_expense, user_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
