@@ -141,6 +141,7 @@ def register_group_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex("^👥 My Groups$"), my_groups),
+
             CallbackQueryHandler(button_handler, pattern="^(create_group|join_group|group_)")
         ],
         states={

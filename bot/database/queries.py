@@ -104,3 +104,70 @@ def get_group_members(group_id):
     cursor.close()
     conn.close()
     return members
+
+# ─── EXPENSE QUERIES ─────────────────────────────────────
+
+def add_expense(group_id, paid_by, total_amount, shared_amount,
+                personal_amount, split_type, description, receipt_file_id=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO expenses (group_id, paid_by, total_amount, shared_amount,
+                              personal_amount, split_type, description, receipt_file_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+    """, (group_id, paid_by, total_amount, shared_amount,
+          personal_amount, split_type, description, receipt_file_id))
+    expense_id = cursor.fetchone()[0]
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return expense_id
+
+
+def add_expense_split(expense_id, user_id, amount, percentage=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO expense_splits (expense_id, user_id, amount, percentage)
+        VALUES (%s, %s, %s, %s)
+    """, (expense_id, user_id, amount, percentage))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_group_expenses(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT e.id, e.paid_by, e.total_amount, e.shared_amount,
+               e.personal_amount, e.split_type, e.description,
+               e.created_at, u.first_name
+        FROM expenses e
+        JOIN users u ON e.paid_by = u.id
+        WHERE e.group_id = %s
+        ORDER BY e.created_at DESC
+    """, (group_id,))
+    expenses = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return expenses
+
+
+def get_active_members_at_date(group_id, date):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT u.id, u.first_name
+        FROM users u
+        JOIN group_members gm ON u.id = gm.user_id
+        WHERE gm.group_id = %s
+        AND gm.joined_at <= %s
+        AND (gm.left_at IS NULL OR gm.left_at > %s)
+        AND gm.is_active = TRUE
+    """, (group_id, date, date))
+    members = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return members
