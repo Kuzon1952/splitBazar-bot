@@ -26,6 +26,8 @@ CONFIRM_REMOVE = 5
 CONFIRM_LEAVE = 6
 SEND_LEAVE_REQUEST = 7
 VERIFY_RESET_PASSWORD = 10
+VERIFY_DELETE_PASSWORD = 11
+CONFIRM_DELETE_GROUP = 12
 
 
 async def settings_start(
@@ -121,6 +123,15 @@ async def show_settings_menu(
             "🔄 Reset Group",
             callback_data="set_reset"
         )])
+        keyboard.append([InlineKeyboardButton(
+            "💣 Delete Group",
+            callback_data="set_deletegroup"
+        )])
+        keyboard.append([InlineKeyboardButton(
+            "💡 Forgot Password",
+            callback_data="set_forgotpass"
+        )])
+
 
     await query.message.reply_text(
         f"⚙️ *{group[1]} Settings*\n\n"
@@ -414,6 +425,40 @@ async def handle_settings_action(
         )
         context.user_data['settings_resetting'] = True
         return VERIFY_RESET_PASSWORD
+
+    elif action == "deletegroup":
+        await query.message.reply_text(
+            f"💣 *Delete {group[1]}?*\n\n"
+            f"⚠️ *WARNING: This is permanent!*\n\n"
+            f"All data will be deleted:\n"
+            f"  - All expenses\n"
+            f"  - All messages\n"
+            f"  - All todo items\n"
+            f"  - All members removed\n\n"
+            f"🔐 Enter reset password to continue:",
+            parse_mode="Markdown"
+        )
+        return VERIFY_DELETE_PASSWORD
+
+    elif action == "forgotpass":
+        from bot.database.queries import get_password_hint
+        hint = get_password_hint(group_id)
+
+        if hint:
+            await query.message.reply_text(
+                f"💡 *Password Hint*\n\n"
+                f"Group: {group[1]}\n\n"
+                f"Your hint: *{hint}*\n\n"
+                f"Use this to remember your password!",
+                parse_mode="Markdown"
+            )
+        else:
+            await query.message.reply_text(
+                f"❌ No password hint set!\n\n"
+                f"You did not set a hint\n"
+                f"when creating this group."
+            )
+        return SHOW_MENU
 
     elif action == "nothing":
         return SHOW_MENU
@@ -842,6 +887,154 @@ async def verify_reset_password_settings(
     )
     return ConversationHandler.END
 
+async def verify_delete_password(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    from bot.database.queries import verify_reset_password
+
+    password = update.message.text.strip()
+    group_id = context.user_data['settings_group_id']
+    group = get_group_by_id(group_id)
+
+    is_correct = verify_reset_password(group_id, password)
+
+    if not is_correct:
+        await update.message.reply_text(
+            "❌ *Wrong password!*\n\n"
+            "Delete cancelled for security.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+
+    await update.message.reply_text(
+        f"✅ Password correct!\n\n"
+        f"⚠️ *FINAL WARNING!*\n\n"
+        f"Type *DELETE* to permanently\n"
+        f"delete *{group[1]}*:\n\n"
+        f"This cannot be undone!",
+        parse_mode="Markdown"
+    )
+    return CONFIRM_DELETE_GROUP
+
+
+async def confirm_delete_group(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    from bot.database.queries import (
+        delete_group_completely,
+        get_first_expense_date,
+        get_balances,
+        get_expenses_for_report
+    )
+    from bot.utils.calculations import (
+        calculate_balances, calculate_settlements
+    )
+
+    text = update.message.text.strip()
+
+    if text != "DELETE":
+        await update.message.reply_text(
+            "❌ *Cancelled!*\n\n"
+            "You did not type DELETE correctly.\n"
+            "Group was NOT deleted.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+
+    group_id = context.user_data['settings_group_id']
+    group = get_group_by_id(group_id)
+    currency = group[2]
+    members = get_active_group_members(group_id)
+
+    await update.message.reply_text(
+        "⏳ Generating final report before deletion..."
+    )
+
+    # Generate and send final report
+    now = datetime.now()
+    first_date = get_first_expense_date(group_id)
+    start_date = first_date if first_date else now.replace(day=1)
+    period_label = (
+        f"{start_date.strftime('%d.%m.%Y')} → "
+        f"{now.strftime('%d.%m.%Y')}"
+    )
+
+    expenses, splits = get_balances(
+        group_id, start_date, now
+    )
+
+    if expenses:
+        balances = calculate_balances(expenses, splits)
+        settlements = calculate_settlements(balances)
+
+        report = f"📊 FINAL REPORT — {group[1]}\n"
+        report += f"📅 {period_label}\n"
+        report += f"━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        for user_id, data in balances.items():
+            emoji = "✅" if abs(data['balance']) < 0.01 else (
+                "💚" if data['balance'] > 0 else "⚠️"
+            )
+            report += (
+                f"{emoji} {data['name']}\n"
+                f"   Balance: "
+                f"{data['balance']:+.2f} {currency}\n\n"
+            )
+
+        if settlements:
+            report += "💸 Final Settlement:\n"
+            for s in settlements:
+                report += (
+                    f"{s['from_name']} → {s['to_name']}: "
+                    f"{s['amount']:.2f} {currency}\n"
+                )
+
+        # Send final report to all members
+        for member in members:
+            try:
+                await context.bot.send_message(
+                    chat_id=member[0],
+                    text=(
+                        f"📊 *[{group[1]}] Final Report*\n\n"
+                        + report
+                    ),
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+
+    # Notify all members group is being deleted
+    for member in members:
+        try:
+            await context.bot.send_message(
+                chat_id=member[0],
+                text=(
+                    f"💣 *Group {group[1]} has been deleted!*\n\n"
+                    f"All data has been permanently removed.\n"
+                    f"Thank you for using SplitBazar! 👋"
+                ),
+                parse_mode="Markdown"
+            )
+        except Exception:
+            pass
+
+    # Delete everything
+    success = delete_group_completely(group_id)
+
+    if success:
+        await update.message.reply_text(
+            f"✅ *Group {group[1]} deleted!*\n\n"
+            f"Final report sent to all members.\n"
+            f"All data permanently removed.",
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            "❌ Error deleting group. Please try again."
+        )
+
+    return ConversationHandler.END
+
 def register_settings_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
@@ -905,6 +1098,18 @@ def register_settings_handlers(app):
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     verify_reset_password_settings
+                )
+            ],
+            VERIFY_DELETE_PASSWORD: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    verify_delete_password
+                )
+            ],
+            CONFIRM_DELETE_GROUP: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    confirm_delete_group
                 )
             ],
         },
