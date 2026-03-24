@@ -4,7 +4,8 @@ from telegram.ext import (
     ConversationHandler, CallbackQueryHandler, filters
 )
 from bot.database.queries import (
-    save_user, create_group, join_group, get_user_groups, get_group_members
+    save_user, create_group, join_group,
+    get_user_groups, get_group_members
 )
 
 # Conversation states
@@ -13,12 +14,17 @@ ENTER_GROUP_NAME = 1
 CHOOSE_CURRENCY = 2
 ENTER_INVITE_CODE = 3
 SET_PASSWORD = 4
+SET_HINT = 5
 
 
-async def my_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def my_groups(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
     user = update.effective_user
-    save_user(user.id, user.username, user.first_name, user.last_name)
-
+    save_user(
+        user.id, user.username,
+        user.first_name, user.last_name
+    )
     groups = get_user_groups(user.id)
 
     keyboard = []
@@ -30,26 +36,39 @@ async def my_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )])
 
     keyboard.append([
-        InlineKeyboardButton("➕ Create Group", callback_data="create_group"),
-        InlineKeyboardButton("🔗 Join Group", callback_data="join_group")
+        InlineKeyboardButton(
+            "➕ Create Group",
+            callback_data="create_group"
+        ),
+        InlineKeyboardButton(
+            "🔗 Join Group",
+            callback_data="join_group"
+        )
     ])
 
     await update.message.reply_text(
         "👥 *Your Groups*\n\n" +
-        (f"You are in {len(groups)} group(s).\n\nSelect a group or create a new one:"
-         if groups else "You are not in any group yet.\nCreate or join one!"),
+        (
+            f"You are in {len(groups)} group(s).\n\n"
+            f"Select a group or create a new one:"
+            if groups else
+            "You are not in any group yet.\nCreate or join one!"
+        ),
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def button_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
     query = update.callback_query
     await query.answer()
 
     if query.data == "create_group":
         await query.message.reply_text(
-            "🏠 *Create New Group*\n\nEnter a name for your group:",
+            "🏠 *Create New Group*\n\n"
+            "Enter a name for your group:",
             parse_mode="Markdown"
         )
         return ENTER_GROUP_NAME
@@ -64,7 +83,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data.startswith("group_"):
         group_id = int(query.data.split("_")[1])
         members = get_group_members(group_id)
-        member_list = "\n".join([f"👤 {m[1]}" for m in members])
+        member_list = "\n".join(
+            [f"👤 {m[1]}" for m in members]
+        )
         await query.message.reply_text(
             f"👥 *Group Members:*\n\n{member_list}",
             parse_mode="Markdown"
@@ -72,29 +93,61 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
 
-async def enter_group_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['group_name'] = update.message.text
+async def enter_group_name(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    from bot.database.queries import is_group_name_taken
+    group_name = update.message.text.strip()
+
+    if len(group_name) < 2:
+        await update.message.reply_text(
+            "❌ Group name too short!\n\n"
+            "Please enter at least 2 characters:"
+        )
+        return ENTER_GROUP_NAME
+
+    if is_group_name_taken(group_name):
+        await update.message.reply_text(
+            f"❌ *Group name already taken!*\n\n"
+            f"'{group_name}' is already used.\n\n"
+            f"Please choose a different name:",
+            parse_mode="Markdown"
+        )
+        return ENTER_GROUP_NAME
+
+    context.user_data['group_name'] = group_name
 
     keyboard = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("₽ Rubles", callback_data="currency_RUB"),
-            InlineKeyboardButton("$ USD", callback_data="currency_USD"),
+            InlineKeyboardButton(
+                "₽ Rubles", callback_data="currency_RUB"
+            ),
+            InlineKeyboardButton(
+                "$ USD", callback_data="currency_USD"
+            ),
         ],
         [
-            InlineKeyboardButton("€ Euro", callback_data="currency_EUR"),
-            InlineKeyboardButton("৳ Taka", callback_data="currency_BDT"),
+            InlineKeyboardButton(
+                "€ Euro", callback_data="currency_EUR"
+            ),
+            InlineKeyboardButton(
+                "৳ Taka", callback_data="currency_BDT"
+            ),
         ]
     ])
 
     await update.message.reply_text(
-        f"✅ Group name: *{update.message.text}*\n\nNow select currency:",
+        f"✅ Group name: *{group_name}*\n\n"
+        f"Now select currency:",
         parse_mode="Markdown",
         reply_markup=keyboard
     )
     return CHOOSE_CURRENCY
 
 
-async def choose_currency(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def choose_currency(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
     query = update.callback_query
     await query.answer()
 
@@ -102,10 +155,11 @@ async def choose_currency(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = query.from_user
     group_name = context.user_data.get('group_name')
 
-    save_user(user.id, user.username, user.first_name, user.last_name)
+    save_user(
+        user.id, user.username,
+        user.first_name, user.last_name
+    )
     result = create_group(group_name, currency, user.id)
-
-    # Also add creator as member
     join_group(result[1], user.id)
 
     context.user_data['new_group_id'] = result[0]
@@ -142,38 +196,63 @@ async def set_group_password(
         return SET_PASSWORD
 
     group_id = context.user_data['new_group_id']
-    group_name = context.user_data['new_group_name']
-    currency = context.user_data['new_group_currency']
-    invite_code = context.user_data['new_group_invite']
-
     from bot.database.queries import set_reset_password
     set_reset_password(group_id, password)
 
     await update.message.reply_text(
-        f"✅ *Reset password set!*\n\n"
+        f"✅ Password set!\n\n"
+        f"🔐 Now set a *password hint*\n\n"
+        f"This hint will help you remember\n"
+        f"your password if you forget it.\n\n"
+        f"Example: 'my cat name'\n"
+        f"Enter your hint:",
+        parse_mode="Markdown"
+    )
+    return SET_HINT
+
+
+async def set_password_hint_handler(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    hint = update.message.text.strip()
+    group_id = context.user_data['new_group_id']
+    group_name = context.user_data['new_group_name']
+    currency = context.user_data['new_group_currency']
+    invite_code = context.user_data['new_group_invite']
+
+    from bot.database.queries import set_password_hint
+    set_password_hint(group_id, hint)
+
+    await update.message.reply_text(
+        f"🎉 *Group Setup Complete!*\n\n"
         f"🏠 Group     : {group_name}\n"
         f"💰 Currency  : {currency}\n"
         f"🔑 Invite    : `{invite_code}`\n"
-        f"🔐 Password  : set ✅\n\n"
-        f"⚠️ Remember your reset password!\n"
-        f"You will need it to reset the group.\n\n"
+        f"🔐 Password  : set ✅\n"
+        f"💡 Hint      : {hint}\n\n"
+        f"⚠️ Remember your reset password!\n\n"
         f"Share invite code with your friends!",
         parse_mode="Markdown"
     )
     return ConversationHandler.END
 
 
-
-async def enter_invite_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def enter_invite_code(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
     user = update.effective_user
     code = update.message.text.strip().upper()
 
-    save_user(user.id, user.username, user.first_name, user.last_name)
+    save_user(
+        user.id, user.username,
+        user.first_name, user.last_name
+    )
     group = join_group(code, user.id)
 
     if group:
         await update.message.reply_text(
-            f"🎉 *Successfully joined!*\n\nWelcome to *{group[1]}*!",
+            f"🎉 *Successfully joined!*\n\n"
+            f"Welcome to *{group[1]}*!",
             parse_mode="Markdown"
         )
     else:
@@ -182,16 +261,26 @@ async def enter_invite_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     return ConversationHandler.END
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def cancel(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
     context.user_data.clear()
     await update.message.reply_text("❌ Cancelled.")
     return ConversationHandler.END
 
+
 def register_group_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex("^👥 My Groups$"), my_groups),
-            CallbackQueryHandler(button_handler, pattern="^(create_group|join_group|group_)")
+            MessageHandler(
+                filters.Regex("^👥 My Groups$"),
+                my_groups
+            ),
+            CallbackQueryHandler(
+                button_handler,
+                pattern="^(create_group|join_group|group_)"
+            )
         ],
         states={
             ENTER_GROUP_NAME: [
@@ -202,7 +291,8 @@ def register_group_handlers(app):
             ],
             CHOOSE_CURRENCY: [
                 CallbackQueryHandler(
-                    choose_currency, pattern="^currency_"
+                    choose_currency,
+                    pattern="^currency_"
                 )
             ],
             ENTER_INVITE_CODE: [
@@ -215,6 +305,12 @@ def register_group_handlers(app):
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     set_group_password
+                )
+            ],
+            SET_HINT: [
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    set_password_hint_handler
                 )
             ],
         },

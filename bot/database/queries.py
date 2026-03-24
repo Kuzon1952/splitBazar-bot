@@ -985,6 +985,7 @@ def set_reset_password(group_id, password):
     conn.close()
 
 
+
 def verify_reset_password(group_id, password):
     hashed = hashlib.sha256(
         password.encode()
@@ -1001,3 +1002,108 @@ def verify_reset_password(group_id, password):
     if not result or not result[0]:
         return False
     return result[0] == hashed
+
+# ─── DELETE GROUP QUERIES ────────────────────────────────
+
+def delete_group_completely(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        # Delete in correct order (foreign keys)
+        cursor.execute("DELETE FROM todo_items WHERE group_id = %s", (group_id,))
+        cursor.execute("DELETE FROM group_messages WHERE group_id = %s", (group_id,))
+        cursor.execute("DELETE FROM budget_targets WHERE group_id = %s", (group_id,))
+        cursor.execute("DELETE FROM edit_requests WHERE group_id = %s", (group_id,))
+        cursor.execute("""
+            DELETE FROM expense_splits
+            WHERE expense_id IN (
+                SELECT id FROM expenses WHERE group_id = %s
+            )
+        """, (group_id,))
+        cursor.execute("DELETE FROM expenses WHERE group_id = %s", (group_id,))
+        cursor.execute("DELETE FROM group_members WHERE group_id = %s", (group_id,))
+        cursor.execute("DELETE FROM groups WHERE id = %s", (group_id,))
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+
+
+def is_group_name_taken(name):
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+                       SELECT id
+                       FROM groups
+                       WHERE LOWER(name) = LOWER(%s)
+                       """, (name,))
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return result is not None
+
+
+def set_password_hint(group_id, hint):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+                   UPDATE groups
+                   SET password_hint = %s
+                   WHERE id = %s
+                   """, (hint, group_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_password_hint(group_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+                   SELECT password_hint
+                   FROM groups
+                   WHERE id = %s
+                   """, (group_id,))
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return result[0] if result else None
+
+# ─── GROUP CHAT QUERIES ──────────────────────────────────
+
+def send_group_message(group_id, user_id, message):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO group_messages
+        (group_id, user_id, message)
+        VALUES (%s, %s, %s)
+        RETURNING id
+    """, (group_id, user_id, message))
+    msg_id = cursor.fetchone()[0]
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return msg_id
+
+
+def get_group_messages(group_id, limit=20):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT m.id, m.message, m.created_at,
+               u.first_name, u.id as user_id
+        FROM group_messages m
+        JOIN users u ON m.user_id = u.id
+        WHERE m.group_id = %s
+        ORDER BY m.created_at DESC
+        LIMIT %s
+    """, (group_id, limit))
+    messages = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return list(reversed(messages))
