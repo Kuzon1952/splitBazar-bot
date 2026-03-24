@@ -95,6 +95,14 @@ async def show_settings_menu(
             "❌ Leave Group",
             callback_data="set_leave"
         )],
+        [InlineKeyboardButton(
+            "📖 Help",
+            callback_data="set_help"
+        )],
+        [InlineKeyboardButton(
+            "ℹ️ Info",
+            callback_data="set_info"
+        )],
     ]
 
     # Admin only buttons
@@ -439,6 +447,108 @@ async def handle_settings_action(
             parse_mode="Markdown"
         )
         return VERIFY_DELETE_PASSWORD
+    elif action == "help":
+        await query.message.reply_text(
+            "📖 *How to use SplitBazar*\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🏠 *GROUPS*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "1. Create a group with your roommates\n"
+            "2. Share invite code so they can join\n"
+            "3. Each member gets their own account\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "➕ *ADD EXPENSE*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "1. Press Add Expense\n"
+            "2. Select date (today/yesterday/earlier)\n"
+            "3. Choose type:\n"
+            "   🍽️ Shared = split among everyone\n"
+            "   👤 Personal = only for you\n"
+            "   🔀 Mixed = partly shared\n"
+            "4. Enter amount\n"
+            "5. Choose split method\n"
+            "6. Add description (optional)\n"
+            "7. Upload receipt (optional)\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "📊 *VIEW REPORT*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "1. Press View Report\n"
+            "2. Select period\n"
+            "3. See who paid what\n"
+            "4. See who owes whom\n"
+            "5. Download PDF or Excel\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🎯 *BUDGET TARGET*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "1. Set monthly budget\n"
+            "2. Get warning at 80%\n"
+            "3. Get alert when exceeded\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "✏️ *EDIT EXPENSE*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "1. Press Edit Expense\n"
+            "2. Select date and expense\n"
+            "3. Own expense: edit directly\n"
+            "4. Others: request admin approval\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "📝 *TODO LIST*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "1. Add shopping items\n"
+            "2. Type 'Rice, 2' for quantity\n"
+            "3. Mark items as done\n"
+            "4. Clear done items\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🔄 *MONTHLY RESET*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "1. At end of month view report\n"
+            "2. Settings → Reset Group\n"
+            "3. Enter password → confirm\n"
+            "4. Fresh start for new month!\n"
+            "━━━━━━━━━━━━━━━━━━━━",
+            parse_mode="Markdown"
+        )
+        return SHOW_MENU
+
+    elif action == "info":
+        await query.message.reply_text(
+            "ℹ️ *About SplitBazar*\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🤖 Bot       : SplitBazar\n"
+            "📌 Version   : 1.0.0\n"
+            "👨‍💻 Developer  : Ovi Md Shamin Yasir\n"
+            "🎓 University : SPbPU\n"
+            "📚 Subject   : Digital Analytics\n"
+            "🎓 Year      : 2nd year, 2026\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "👨‍🏫 *Supervisor:*\n"
+            "Vladimir Alexandrovich Mulyukha\n"
+            "PhD in Technical Sciences\n"
+            "Director — Higher School of\n"
+            "AI Technologies, SPbPU\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "💡 *About:*\n"
+            "SplitBazar helps groups track\n"
+            "shared expenses and calculate\n"
+            "who owes whom. Perfect for\n"
+            "roommates, trips, and shared\n"
+            "living expenses.\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🛠️ *Features:*\n"
+            "✅ Group expense tracking\n"
+            "✅ Smart split calculation\n"
+            "✅ PDF & Excel reports\n"
+            "✅ Budget targets & alerts\n"
+            "✅ Shopping ToDo list\n"
+            "✅ Group chat\n"
+            "✅ Monthly reset system\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "📬 Contact: @virtual786\n"
+            "━━━━━━━━━━━━━━━━━━━━",
+            parse_mode="Markdown"
+        )
+        return SHOW_MENU
+
+
 
     elif action == "forgotpass":
         from bot.database.queries import get_password_hint
