@@ -279,7 +279,7 @@ def register_group_handlers(app):
             ),
             CallbackQueryHandler(
                 button_handler,
-                pattern="^(create_group|join_group|group_)"
+                pattern="^(create_group|join_group|group_\d+)"
             )
         ],
         states={
@@ -293,6 +293,10 @@ def register_group_handlers(app):
                 CallbackQueryHandler(
                     choose_currency,
                     pattern="^currency_"
+                ),
+                CallbackQueryHandler(
+                    button_handler,
+                    pattern="^(create_group|join_group|group_\d+)"
                 )
             ],
             ENTER_INVITE_CODE: [
