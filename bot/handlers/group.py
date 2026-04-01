@@ -158,11 +158,17 @@ async def choose_currency(
     user = query.from_user
     group_name = context.user_data.get('group_name')
 
-    if not group_name:  # ← ADD THIS GUARD
-        await query.message.reply_text(
-            "⚠️ Session expired. Please start over with 👥 My Groups."
-        )
-        return ConversationHandler.END
+    if not group_name:
+        # fallback: recover from last message
+        text = query.message.text
+
+        if "Group name:" in text:
+            group_name = text.split("Group name:")[1].split("\n")[0].strip()
+        else:
+            await query.message.reply_text(
+                "⚠️ Session expired. Please try again."
+            )
+            return ConversationHandler.END
 
     save_user(
         user.id, user.username,
