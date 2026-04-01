@@ -57,6 +57,7 @@ async def my_groups(
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+    return CHOOSING_ACTION
 
 
 async def button_handler(
@@ -269,7 +270,6 @@ async def cancel(
     await update.message.reply_text("❌ Cancelled.")
     return ConversationHandler.END
 
-
 def register_group_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
@@ -277,12 +277,14 @@ def register_group_handlers(app):
                 filters.Regex("^👥 My Groups$"),
                 my_groups
             ),
-            CallbackQueryHandler(
-                button_handler,
-                pattern="^(create_group|join_group|group_\d+)"
-            )
         ],
         states={
+            CHOOSING_ACTION: [
+                CallbackQueryHandler(
+                    button_handler,
+                    pattern="^(create_group|join_group|group_)"
+                )
+            ],
             ENTER_GROUP_NAME: [
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
@@ -293,10 +295,6 @@ def register_group_handlers(app):
                 CallbackQueryHandler(
                     choose_currency,
                     pattern="^currency_"
-                ),
-                CallbackQueryHandler(
-                    button_handler,
-                    pattern="^(create_group|join_group|group_\d+)"
                 )
             ],
             ENTER_INVITE_CODE: [
