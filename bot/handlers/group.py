@@ -319,6 +319,15 @@ def register_group_handlers(app):
         fallbacks=[
             CommandHandler("cancel", cancel),
         ],
-        allow_reentry=True
+        allow_reentry=True,
+        per_message=False,
+        conversation_timeout=300
     )
     app.add_handler(conv_handler)
+
+    app.add_handler(
+        CallbackQueryHandler(
+            choose_currency,
+            pattern="^currency_"
+        )
+    )
