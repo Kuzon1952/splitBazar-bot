@@ -326,7 +326,7 @@ def register_group_handlers(app):
             CommandHandler("cancel", cancel),
         ],
         allow_reentry=True,
-        per_message=True,
+        per_message=False,
         conversation_timeout=300
     )
     app.add_handler(conv_handler)
