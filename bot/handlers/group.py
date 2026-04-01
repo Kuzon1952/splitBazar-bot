@@ -20,6 +20,7 @@ SET_HINT = 5
 async def my_groups(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
+    print("MY_GROUPS_TRIGGERED")
     user = update.effective_user
     save_user(
         user.id, user.username,
@@ -149,6 +150,7 @@ async def enter_group_name(
 async def choose_currency(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
+    print("CLICKED:", query.data)
     query = update.callback_query
     await query.answer()
 
@@ -275,6 +277,7 @@ async def cancel(
     context.user_data.clear()
     await update.message.reply_text("❌ Cancelled.")
     return ConversationHandler.END
+
 
 def register_group_handlers(app):
     conv_handler = ConversationHandler(
