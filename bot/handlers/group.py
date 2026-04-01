@@ -288,7 +288,7 @@ def register_group_handlers(app):
             CHOOSING_ACTION: [
                 CallbackQueryHandler(
                     button_handler,
-                    pattern="^(create_group|join_group|group_)"
+                    pattern=r"^(create_group|join_group|group_\d+)$"
                 )
             ],
             ENTER_GROUP_NAME: [
@@ -300,7 +300,7 @@ def register_group_handlers(app):
             CHOOSE_CURRENCY: [
                 CallbackQueryHandler(
                     choose_currency,
-                    pattern="^currency_"
+                    pattern=r"^currency_(RUB|USD|EUR|BDT)$"
                 )
             ],
             ENTER_INVITE_CODE: [
@@ -326,7 +326,7 @@ def register_group_handlers(app):
             CommandHandler("cancel", cancel),
         ],
         allow_reentry=True,
-        per_message=False,
+        per_message=True,
         conversation_timeout=300
     )
     app.add_handler(conv_handler)
