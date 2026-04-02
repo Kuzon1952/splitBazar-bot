@@ -150,52 +150,48 @@ async def enter_group_name(
 async def choose_currency(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
-    print("CLICKED:", query.data)
     query = update.callback_query
     await query.answer()
 
-    currency = query.data.split("_")[1]
-    user = query.from_user
-    group_name = context.user_data.get('group_name')
+    try:
+        print("CLICKED:", query.data)
 
-    if not group_name:
-        # fallback: recover from last message
-        text = query.message.text
+        currency = query.data.split("_")[1]
+        user = query.from_user
+        group_name = context.user_data.get("group_name")
 
-        if "Group name:" in text:
-            group_name = text.split("Group name:")[1].split("\n")[0].strip()
-        else:
+        if not group_name:
             await query.message.reply_text(
-                "⚠️ Session expired. Please try again."
+                "⚠️ Session expired. Please start over."
             )
-            return ConversationHandler.END
+            return CHOOSING_ACTION
 
-    save_user(
-        user.id, user.username,
-        user.first_name, user.last_name
-    )
-    result = create_group(group_name, currency, user.id)
-    join_group(result[1], user.id)
+        save_user(
+            user.id, user.username,
+            user.first_name, user.last_name
+        )
 
-    context.user_data['new_group_id'] = result[0]
-    context.user_data['new_group_invite'] = result[1]
-    context.user_data['new_group_name'] = group_name
-    context.user_data['new_group_currency'] = currency
+        result = create_group(group_name, currency, user.id)
+        join_group(result[1], user.id)
 
-    await query.message.reply_text(
-        f"🎉 *Group Created!*\n\n"
-        f"Name        : {group_name}\n"
-        f"Currency    : {currency}\n"
-        f"Invite Code : `{result[1]}`\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🔐 *Set Reset Password*\n\n"
-        f"Please set a password to protect\n"
-        f"group reset. You will need this\n"
-        f"password every time you reset.\n\n"
-        f"Enter your reset password:",
-        parse_mode="Markdown"
-    )
-    return SET_PASSWORD
+        context.user_data["new_group_id"] = result[0]
+        context.user_data["new_group_invite"] = result[1]
+        context.user_data["new_group_name"] = group_name
+        context.user_data["new_group_currency"] = currency
+
+        await query.message.reply_text(
+            f"🎉 *Group Created!*\n\n"
+            f"Name: {group_name}\n"
+            f"Currency: {currency}\n"
+            f"Invite Code: `{result[1]}`\n\n"
+            f"Enter your reset password:",
+            parse_mode="Markdown"
+        )
+        return SET_PASSWORD
+
+    except Exception as e:
+        await query.message.reply_text(f"❌ Currency click error:\n{e}")
+        return CHOOSING_ACTION
 
 
 async def set_group_password(
