@@ -20,7 +20,6 @@ SET_HINT = 5
 async def my_groups(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
-    print("MY_GROUPS_TRIGGERED")
     user = update.effective_user
     save_user(
         user.id, user.username,
@@ -154,7 +153,6 @@ async def choose_currency(
     await query.answer()
 
     try:
-        print("CLICKED:", query.data)
 
         currency = query.data.split("_")[1]
         user = query.from_user
@@ -164,7 +162,7 @@ async def choose_currency(
             await query.message.reply_text(
                 "⚠️ Session expired. Please start over."
             )
-            return CHOOSING_ACTION
+            return ConversationHandler.END
 
         save_user(
             user.id, user.username,
@@ -191,7 +189,7 @@ async def choose_currency(
 
     except Exception as e:
         await query.message.reply_text(f"❌ Currency click error:\n{e}")
-        return CHOOSING_ACTION
+        return ConversationHandler.END
 
 
 async def set_group_password(
