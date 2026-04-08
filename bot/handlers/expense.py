@@ -112,7 +112,7 @@ async def enter_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['total_amount'] = total
         purchase_type = context.user_data['purchase_type']
 
-        if purchase_type == "personal":ß
+        if purchase_type == "personal":
             context.user_data['shared_amount'] = 0
             context.user_data['personal_amount'] = total
             await update.message.reply_text(
