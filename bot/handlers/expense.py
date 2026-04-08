@@ -1,7 +1,6 @@
 from bot.handlers.notifications import send_large_expense_alert
 from bot.database.queries import get_group_by_id
 from bot.handlers.target import check_budget_alert
-from bot.database.queries import get_group_by_id
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
@@ -101,19 +100,26 @@ async def select_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    menu_buttons = ["➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
+        "👥 My Groups", "🎯 My Target", "💬 Group Chat", "📝 ToDo List", "⚙️ Settings"]
+    
+    if update.message.text in menu_buttons:
+        await update.message.reply_text("⚠️ Please enter a valid amount, don't use menu buttons!")
+        return ENTER_TOTAL  # 👈 add this before the try block
+
     try:
         total = float(update.message.text.strip())
         context.user_data['total_amount'] = total
         purchase_type = context.user_data['purchase_type']
 
-        if purchase_type == "personal":
+        if purchase_type == "personal":ß
             context.user_data['shared_amount'] = 0
             context.user_data['personal_amount'] = total
             await update.message.reply_text(
                 "📝 Add a description: "
             )
             return ENTER_DESCRIPTION
-
+    
         elif purchase_type == "shared":
             context.user_data['shared_amount'] = total
             context.user_data['personal_amount'] = 0
@@ -138,6 +144,12 @@ async def enter_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_shared(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    menu_buttons = ["➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
+        "👥 My Groups", "🎯 My Target", "💬 Group Chat", "📝 ToDo List", "⚙️ Settings"]
+    
+    if update.message.text in menu_buttons:
+        await update.message.reply_text("⚠️ Please enter a valid amount, don't use menu buttons!")
+        return ENTER_SHARED  # 👈 add this before the try block
     try:
         personal = float(update.message.text.strip())
         total = context.user_data['total_amount']
@@ -190,6 +202,13 @@ async def select_split(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    menu_buttons = ["➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
+        "👥 My Groups", "🎯 My Target", "💬 Group Chat", "📝 ToDo List", "⚙️ Settings"]
+    
+    if update.message.text in menu_buttons:
+        await update.message.reply_text("⚠️ Please type a description or send /skip!")
+        return ENTER_DESCRIPTION
+    
     if update.message.text != "/skip":
         context.user_data['description'] = update.message.text
     else:
