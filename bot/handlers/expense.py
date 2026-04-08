@@ -238,7 +238,7 @@ async def save_expense(update: Update, context, receipt_file_id):
     )
 
     if shared > 0:
-        active_members = get_active_members_at_date(group_id, now)
+        active_members = get_active_members_at_date(group_id, expense_date)
         if split_type == 'equal' and active_members:
             split_amount = round(shared / len(active_members), 2)
             for member in active_members:
@@ -444,6 +444,7 @@ def register_expense_handlers(app):
                 )
             ],
         },
-        fallbacks=[]
+        fallbacks=[CommandHandler("cancel", cancel)]
+
     )
     app.add_handler(conv_handler)

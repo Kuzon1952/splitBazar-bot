@@ -34,7 +34,8 @@ def main():
 
     register_start_handlers(app)
     register_group_handlers(app)
-    register_expense_handlers(app)
+    register_chat_handlers(app)      # 👈 moved up
+    register_expense_handlers(app)   # 👈 now after chat
     register_report_handlers(app)
     register_edit_handlers(app)
     register_target_handlers(app)
@@ -43,7 +44,6 @@ def main():
     register_settings_handlers(app)
     register_todo_handlers(app)
     register_reset_handlers(app)
-    register_chat_handlers(app)
 
     logger.info("SplitBazar Bot is running...")
     app.run_polling()
