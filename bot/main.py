@@ -32,22 +32,18 @@ def main():
 
     app = Application.builder().token(token).build()
 
-register_start_handlers(app)
-register_chat_handlers(app)     
-register_group_handlers(app)    
-register_expense_handlers(app) 
-register_report_handlers(app)
-register_edit_handlers(app)
-register_target_handlers(app)
-setup_notifications(app)
-register_leave_handlers(app)
-register_settings_handlers(app)
-register_todo_handlers(app)
-register_reset_handlers(app)
+    register_start_handlers(app)
+    register_chat_handlers(app)
+    register_group_handlers(app)
+    register_expense_handlers(app)
+    register_report_handlers(app)
+    register_edit_handlers(app)
+    register_target_handlers(app)
+    setup_notifications(app)
+    register_leave_handlers(app)
+    register_settings_handlers(app)
+    register_todo_handlers(app)
+    register_reset_handlers(app)
 
-    logger.info("SplitBazar Bot is running...")
+    logger.info("SplitBazar Bot is running...")  # ← line 48, must be inside def main()
     app.run_polling()
-
-
-if __name__ == "__main__":
-    main()
