@@ -112,6 +112,14 @@ async def show_chat(message, group_id, context):
 async def handle_chat_message(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
+   
+    menu_buttons = ["➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
+        "👥 My Groups", "🎯 My Target", "💬 Group Chat", "📝 ToDo List", "⚙️ Settings"]
+
+    if update.message.text in menu_buttons:
+        context.user_data.clear()  # ← exit chat state
+        return ConversationHandler.END  # ← free the user
+
     user = update.effective_user
     group_id = context.user_data.get('chat_group_id')
 
