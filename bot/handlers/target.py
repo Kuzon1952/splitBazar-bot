@@ -230,12 +230,22 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+
+async def end_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    return ConversationHandler.END
+
 def register_target_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
-            MessageHandler(
-                filters.Regex("^🎯 My Target$"), my_target
-            )
+            MessageHandler(filters.Regex("^🎯 My Target$"), my_target),
+            MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
+            MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
+            MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
+            MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
+            MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
+            MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
+            MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
         ],
         states={
             SELECT_GROUP: [

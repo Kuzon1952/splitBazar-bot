@@ -32,8 +32,8 @@ MENU_BUTTONS = [
 ]
 
 async def global_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Clears any stuck conversation and lets the menu button work normally"""
     context.user_data.clear()
+    context.chat_data.clear()
 
 def main():
     token = os.getenv("BOT_TOKEN")
