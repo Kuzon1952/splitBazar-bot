@@ -97,6 +97,13 @@ async def button_handler(
 async def enter_group_name(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
+    menu_buttons = ["➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
+    "👥 My Groups", "🎯 My Target", "💬 Group Chat", "📝 ToDo List", "⚙️ Settings"]
+
+    if update.message.text in menu_buttons:
+        await update.message.reply_text("⚠️ Please don't use menu buttons during this step!")
+        return ENTER_GROUP_NAME  # 👈 change this to match the current state
+
     from bot.database.queries import is_group_name_taken
     group_name = update.message.text.strip()
 
