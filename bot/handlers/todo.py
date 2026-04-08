@@ -187,7 +187,7 @@ async def enter_item(
 
     if update.message.text in menu_buttons:
         await update.message.reply_text("⚠️ Please don't use menu buttons during this step!")
-        return ENTER_GROUP_NAME  # 👈 change this to match the current state
+        return ConversationHandler.END # 👈 change this to match the current state
     
     user = update.effective_user
     group_id = context.user_data['todo_group_id']

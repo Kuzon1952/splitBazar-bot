@@ -132,7 +132,7 @@ async def enter_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.message.text in menu_buttons:
         await update.message.reply_text("⚠️ Please don't use menu buttons during this step!")
-        return ENTER_GROUP_NAME  # 👈 change this to match the current state
+        return ENTER_TARGET # 👈 change this to match the current state
     
     try:
         amount = float(update.message.text.strip())

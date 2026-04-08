@@ -415,7 +415,7 @@ async def enter_new_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.message.text in menu_buttons:
         await update.message.reply_text("⚠️ Please don't use menu buttons during this step!")
-        return ENTER_GROUP_NAME  # 👈 change this to match the current state
+        return ENTER_NEW_VALUE   # 👈 change this to match the current state
 
     field = context.user_data['edit_field']
     expense = context.user_data['editing_expense']
