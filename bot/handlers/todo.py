@@ -256,9 +256,9 @@ async def cancel(
 
 
 
-async def end_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def end_conversation(update, context):
     context.user_data.clear()
-    return ConversationHandler.END
+    return -1  # ConversationHandler.END
 
 def register_todo_handlers(app):
     conv_handler = ConversationHandler(
@@ -286,6 +286,14 @@ def register_todo_handlers(app):
                 )
             ],
             ENTER_ITEM: [
+                MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
+                MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
+                MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
+                MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
+                MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
+                MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
+                MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
+                MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     enter_item
