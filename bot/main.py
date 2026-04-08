@@ -1,5 +1,6 @@
 import logging
-from telegram.ext import Application
+from telegram import Update
+from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 import os
 
@@ -24,6 +25,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+MENU_BUTTONS = [
+    "➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
+    "👥 My Groups", "🎯 My Target", "💬 Group Chat",
+    "📝 ToDo List", "⚙️ Settings"
+]
+
+async def global_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Clears any stuck conversation and lets the menu button work normally"""
+    context.user_data.clear()
 
 def main():
     token = os.getenv("BOT_TOKEN")
@@ -31,6 +41,12 @@ def main():
         raise ValueError("BOT_TOKEN not found in .env file!")
 
     app = Application.builder().token(token).build()
+
+    # ✅ THIS IS THE GLOBAL FIX — runs BEFORE all other handlers
+    app.add_handler(MessageHandler(
+        filters.Regex("^(" + "|".join(MENU_BUTTONS) + ")$"),
+        global_menu_handler
+    ), group=-1)  # group=-1 means it runs first
 
     register_start_handlers(app)
     register_chat_handlers(app)
@@ -47,7 +63,6 @@ def main():
 
     logger.info("SplitBazar Bot is running...")
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
