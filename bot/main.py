@@ -45,5 +45,9 @@ def main():
     register_todo_handlers(app)
     register_reset_handlers(app)
 
-    logger.info("SplitBazar Bot is running...")  # ← line 48, must be inside def main()
+    logger.info("SplitBazar Bot is running...")
     app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
