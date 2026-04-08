@@ -213,6 +213,27 @@ def register_chat_handlers(app):
             ],
             IN_CHAT: [
                 MessageHandler(
+                    filters.Regex("^➕ Add Expense$"), end_conversation
+                ),
+                MessageHandler(
+                    filters.Regex("^📊 View Report$"), end_conversation
+                ),
+                MessageHandler(
+                    filters.Regex("^✏️ Edit Expense$"), end_conversation
+                ),
+                MessageHandler(
+                    filters.Regex("^👥 My Groups$"), end_conversation
+                ),
+                MessageHandler(
+                    filters.Regex("^🎯 My Target$"), end_conversation
+                ),
+                MessageHandler(
+                    filters.Regex("^📝 ToDo List$"), end_conversation
+                ),
+                MessageHandler(
+                    filters.Regex("^⚙️ Settings$"), end_conversation
+                ),
+                MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     handle_chat_message
                 ),
