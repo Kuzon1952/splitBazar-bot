@@ -233,11 +233,23 @@ async def generate_report(
         )
         return
 
+    from bot.database.queries import get_group_members
+    all_members = get_group_members(group_id)  # all active members
+
     balances = calculate_balances(expenses, splits)
     settlements = calculate_settlements(balances)
     all_expenses = get_expenses_for_report(
         group_id, start_date, end_date
     )
+
+    # Ensure ALL group members appear in balances (even if 0 paid, 0 share)
+    for m in all_members:
+        uid, name = m[0], m[1]
+        if uid not in balances:
+            balances[uid] = {'name': name, 'paid': 0.0, 'share': 0.0, 'balance': 0.0}
+
+    # Recalculate settlements with full member list
+    settlements = calculate_settlements(balances)
 
     # Build report text
     report = f"📊 *SplitBazar — Expense Report*\n"
@@ -245,11 +257,8 @@ async def generate_report(
     report += f"📅 {period_label}\n"
     report += f"━━━━━━━━━━━━━━━━━━━━\n\n"
 
-    # Members section
     report += f"👥 *MEMBERS:*\n"
-    from bot.database.queries import get_group_members
-    members = get_group_members(group_id)
-    for m in members:
+    for m in all_members:
         report += f"   {m[1]}\n"
     report += f"\n"
 
@@ -257,7 +266,7 @@ async def generate_report(
     report += f"💰 *SUMMARY:*\n\n"
 
     settled_users = []
-    for user_id, data in balances.items():
+    for uid, data in balances.items():
         balance = data['balance']
         paid = data['paid']
         share = data['share']
