@@ -1145,13 +1145,22 @@ async def confirm_delete_group(
 
     return ConversationHandler.END
 
+
+async def end_conversation(update, context):
+    context.user_data.clear()
+    return -1  # ConversationHandler.END
+
 def register_settings_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
-            MessageHandler(
-                filters.Regex("^⚙️ Settings$"),
-                settings_start
-            )
+            MessageHandler(filters.Regex("^⚙️ Settings$"), settings_start),
+            MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
+            MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
+            MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
+            MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
+            MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
+            MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
+            MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
         ],
         states={
             SELECT_GROUP: [
@@ -1205,18 +1214,42 @@ def register_settings_handlers(app):
                 )
             ],
             VERIFY_RESET_PASSWORD: [
+                MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
+                MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
+                MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
+                MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
+                MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
+                MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
+                MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
+                MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     verify_reset_password_settings
                 )
             ],
             VERIFY_DELETE_PASSWORD: [
+                MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
+                MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
+                MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
+                MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
+                MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
+                MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
+                MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
+                MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     verify_delete_password
                 )
             ],
             CONFIRM_DELETE_GROUP: [
+                MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
+                MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
+                MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
+                MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
+                MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
+                MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
+                MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
+                MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     confirm_delete_group

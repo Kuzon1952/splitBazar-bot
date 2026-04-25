@@ -3,7 +3,7 @@
 A Telegram bot for tracking shared expenses in groups. 
 Perfect for roommates, dormitories, and shared living.
 
-## 👨‍💻 Developer
+## 👨‍💻 Student
 - **Name:** Ovi Md Shamin Yasir
 - **University:** Peter the Great Saint Petersburg Polytechnic University (spbstu.ru)
 - **Group:** 5130201/40001
@@ -209,8 +209,12 @@ venv\Scripts\python.exe -m bot.main
 
 ## 📬 Contact
 
-- **Developer:** @virtual786
-- **GitHub:** https://github.com/Kuzon1952/splitBazar-bot
+### 👨‍🎓 Student
+- **Name:** Md Shamin Yasir Ovi
+- **Telegram:** @virtual786
+- **GitHub:** https://github.com/Kuzon1952  
+- **University Email:** ovi.m@edu.spbstu.ru  
+- **Personal Email:** shamin.yasir.ovi2@gmail.com  
 
 ---
 

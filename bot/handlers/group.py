@@ -98,6 +98,13 @@ async def button_handler(
 async def enter_group_name(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
+    menu_buttons = ["➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
+    "👥 My Groups", "🎯 My Target", "💬 Group Chat", "📝 ToDo List", "⚙️ Settings"]
+
+    if update.message.text in menu_buttons:
+        await update.message.reply_text("⚠️ Please don't use menu buttons during this step!")
+        return ENTER_GROUP_NAME  # 👈 change this to match the current state
+
     from bot.database.queries import is_group_name_taken
     group_name = update.message.text.strip()
 
@@ -280,13 +287,22 @@ async def cancel(
     return ConversationHandler.END
 
 
+
+async def end_conversation(update, context):
+    context.user_data.clear()
+    return -1  # ConversationHandler.END
+
 def register_group_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
-            MessageHandler(
-                filters.Regex("^👥 My Groups$"),
-                my_groups
-            ),
+            MessageHandler(filters.Regex("^👥 My Groups$"), my_groups),
+            MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
+            MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
+            MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
+            MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
+            MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
+            MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
+            MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
         ],
         states={
             CHOOSING_ACTION: [

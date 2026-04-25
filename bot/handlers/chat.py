@@ -113,6 +113,14 @@ async def show_chat(message, group_id, context):
 async def handle_chat_message(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
+   
+    menu_buttons = ["➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
+        "👥 My Groups", "🎯 My Target", "💬 Group Chat", "📝 ToDo List", "⚙️ Settings"]
+
+    if update.message.text in menu_buttons:
+        context.user_data.clear()  # ← exit chat state
+        return ConversationHandler.END  # ← free the user
+
     user = update.effective_user
     group_id = context.user_data.get('chat_group_id')
 
@@ -180,13 +188,22 @@ async def cancel(
     return ConversationHandler.END
 
 
+
+async def end_conversation(update, context):
+    context.user_data.clear()
+    return -1  # ConversationHandler.END
+
 def register_chat_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
-            MessageHandler(
-                filters.Regex("^💬 Group Chat$"),
-                group_chat_start
-            )
+            MessageHandler(filters.Regex("^💬 Group Chat$"), group_chat_start),
+            MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
+            MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
+            MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
+            MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
+            MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
+            MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
+            MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
         ],
         states={
             SELECT_GROUP: [

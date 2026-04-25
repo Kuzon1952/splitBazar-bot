@@ -127,6 +127,13 @@ async def select_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    menu_buttons = ["➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
+    "👥 My Groups", "🎯 My Target", "💬 Group Chat", "📝 ToDo List", "⚙️ Settings"]
+
+    if update.message.text in menu_buttons:
+        await update.message.reply_text("⚠️ Please don't use menu buttons during this step!")
+        return ENTER_TARGET # 👈 change this to match the current state
+    
     try:
         amount = float(update.message.text.strip())
         if amount <= 0:
@@ -223,12 +230,22 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+
+async def end_conversation(update, context):
+    context.user_data.clear()
+    return -1  # ConversationHandler.END
+
 def register_target_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
-            MessageHandler(
-                filters.Regex("^🎯 My Target$"), my_target
-            )
+            MessageHandler(filters.Regex("^🎯 My Target$"), my_target),
+            MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
+            MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
+            MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
+            MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
+            MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
+            MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
+            MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
         ],
         states={
             SELECT_GROUP: [
@@ -237,6 +254,14 @@ def register_target_handlers(app):
                 )
             ],
             ENTER_TARGET: [
+                MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
+                MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
+                MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
+                MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
+                MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
+                MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
+                MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
+                MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     enter_target
