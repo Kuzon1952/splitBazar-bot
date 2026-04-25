@@ -1,7 +1,3 @@
-from bot.handlers.notifications import send_large_expense_alert
-from bot.database.queries import get_group_by_id
-from bot.handlers.target import check_budget_alert
-from bot.database.queries import get_group_by_id
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
@@ -11,9 +7,11 @@ from telegram.ext import (
 from bot.database.queries import (
     save_user, get_user_groups, add_expense,
     add_expense_split, get_active_members_at_date,
-    get_member_join_date
+    get_member_join_date, get_group_by_id
 )
-from datetime import datetime
+from bot.handlers.notifications import send_large_expense_alert
+from bot.handlers.target import check_budget_alert
+from bot.utils.menu_guard import MENU_BUTTON_FILTER, exit_to_menu
 
 # Conversation states
 SELECT_GROUP = 0
@@ -400,6 +398,7 @@ def register_expense_handlers(app):
                 )
             ],
             ENTER_DATE: [
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     enter_date
@@ -411,12 +410,14 @@ def register_expense_handlers(app):
                 )
             ],
             ENTER_TOTAL: [
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     enter_total
                 )
             ],
             ENTER_SHARED: [
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     enter_shared
@@ -428,6 +429,8 @@ def register_expense_handlers(app):
                 )
             ],
             ENTER_DESCRIPTION: [
+                CommandHandler("skip", enter_description),
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     enter_description
@@ -438,12 +441,13 @@ def register_expense_handlers(app):
                     filters.PHOTO | filters.Document.ALL,
                     upload_receipt
                 ),
-                MessageHandler(
-                    filters.Regex("^/skip$"),
-                    skip_receipt
-                )
+                CommandHandler("skip", skip_receipt),
             ],
         },
-        fallbacks=[]
+        fallbacks=[
+            CommandHandler("cancel", cancel),
+            CommandHandler("clear", cancel),
+        ],
+        allow_reentry=True,
     )
     app.add_handler(conv_handler)

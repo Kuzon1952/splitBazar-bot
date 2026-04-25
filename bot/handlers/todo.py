@@ -9,6 +9,7 @@ from bot.database.queries import (
     mark_todo_done, mark_todo_undone,
     delete_todo_item, clear_done_items
 )
+from bot.utils.menu_guard import MENU_BUTTON_FILTER, exit_to_menu
 
 # States
 SELECT_GROUP = 0
@@ -270,6 +271,7 @@ def register_todo_handlers(app):
                 )
             ],
             ENTER_ITEM: [
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     enter_item
@@ -277,7 +279,8 @@ def register_todo_handlers(app):
             ],
         },
         fallbacks=[
-            CommandHandler("cancel", cancel)
+            CommandHandler("cancel", cancel),
+            CommandHandler("clear", cancel),
         ],
         allow_reentry=True
     )

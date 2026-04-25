@@ -7,6 +7,7 @@ from bot.database.queries import (
     save_user, create_group, join_group,
     get_user_groups, get_group_members
 )
+from bot.utils.menu_guard import MENU_BUTTON_FILTER, exit_to_menu
 
 # Conversation states
 CHOOSING_ACTION = 0
@@ -295,6 +296,7 @@ def register_group_handlers(app):
                 )
             ],
             ENTER_GROUP_NAME: [
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     enter_group_name
@@ -307,18 +309,21 @@ def register_group_handlers(app):
                 )
             ],
             ENTER_INVITE_CODE: [
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     enter_invite_code
                 )
             ],
             SET_PASSWORD: [
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     set_group_password
                 )
             ],
             SET_HINT: [
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     set_password_hint_handler

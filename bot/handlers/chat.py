@@ -8,6 +8,7 @@ from bot.database.queries import (
     get_active_group_members,
     send_group_message, get_group_messages
 )
+from bot.utils.menu_guard import MENU_BUTTON_FILTER, exit_to_menu
 from datetime import datetime
 
 # States
@@ -195,6 +196,7 @@ def register_chat_handlers(app):
                 )
             ],
             IN_CHAT: [
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     handle_chat_message
@@ -206,8 +208,10 @@ def register_chat_handlers(app):
             ],
         },
         fallbacks=[
-            CommandHandler("cancel", cancel)
+            CommandHandler("cancel", cancel),
+            CommandHandler("clear", cancel),
         ],
-        allow_reentry=True
+        allow_reentry=True,
+        conversation_timeout=300,
     )
     app.add_handler(conv_handler)

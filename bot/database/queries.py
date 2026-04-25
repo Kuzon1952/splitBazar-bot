@@ -491,7 +491,7 @@ def get_budget_target(user_id, group_id, month, year):
     result = cursor.fetchone()
     cursor.close()
     conn.close()
-    return result[0] if result else None
+    return float(result[0]) if result else None
 
 
 def get_user_spending_this_month(user_id, group_id, month, year):
