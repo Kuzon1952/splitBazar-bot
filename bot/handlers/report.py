@@ -99,17 +99,17 @@ async def select_period(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTER_CUSTOM_START
 
     if period == "2w":
-        start_date = now - timedelta(weeks=2)
-        period_label = "Last 2 weeks"
+        start_date = (now - timedelta(weeks=2)).date()
+        period_label = f"{start_date.strftime('%d.%m.%Y')} → {now.strftime('%d.%m.%Y')}"
     elif period == "4w":
-        start_date = now - timedelta(weeks=4)
-        period_label = "Last 4 weeks"
+        start_date = (now - timedelta(weeks=4)).date()
+        period_label = f"{start_date.strftime('%d.%m.%Y')} → {now.strftime('%d.%m.%Y')}"
     else:
-        start_date = now.replace(day=1, hour=0, minute=0, second=0)
-        period_label = "This month"
+        start_date = now.replace(day=1).date()
+        period_label = f"{start_date.strftime('%d.%m.%Y')} → {now.strftime('%d.%m.%Y')}"
 
     group_id = context.user_data['report_group_id']
-    await generate_report(query.message, context, group_id, start_date, now, period_label)
+    await generate_report(query.message, context, group_id, start_date, now.date(), period_label)
     return ConversationHandler.END
 
 
@@ -239,39 +239,61 @@ async def generate_report(
     )
 
     # Build report text
-    report = f"📊 *SplitBazar Report*\n"
+    report = f"📊 *SplitBazar — Expense Report*\n"
     report += f"🏠 {group[1]}\n"
     report += f"📅 {period_label}\n"
     report += f"━━━━━━━━━━━━━━━━━━━━\n\n"
-    report += f"💰 *Summary per person:*\n\n"
 
+    # Members section
+    report += f"👥 *MEMBERS:*\n"
+    from bot.database.queries import get_group_members
+    members = get_group_members(group_id)
+    for m in members:
+        report += f"   {m[1]}\n"
+    report += f"\n"
+
+    report += f"━━━━━━━━━━━━━━━━━━━━\n"
+    report += f"💰 *SUMMARY:*\n\n"
+
+    settled_users = []
     for user_id, data in balances.items():
-        if abs(data['balance']) < 0.01:
+        balance = data['balance']
+        paid = data['paid']
+        share = data['share']
+        name = data['name']
+
+        if abs(balance) < 0.01:
+            status = "0 settled ✅"
             emoji = "✅"
-        elif data['balance'] > 0:
+            settled_users.append(name)
+        elif balance > 0:
+            status = f"+{balance:.2f} gets back 💚"
             emoji = "💚"
         else:
+            status = f"{balance:.2f} owes ⚠️"
             emoji = "⚠️"
 
         report += (
-            f"{emoji} *{data['name']}*\n"
-            f"   Paid   : {data['paid']:.2f} {currency}\n"
-            f"   Share  : {data['share']:.2f} {currency}\n"
-            f"   Balance: {data['balance']:+.2f} {currency}\n\n"
+            f"{emoji} *{name}*\n"
+            f"   Paid: `{paid:.2f}` {currency}  "
+            f"Share: `{share:.2f}` {currency}  "
+            f"│ {status}\n\n"
         )
 
     report += f"━━━━━━━━━━━━━━━━━━━━\n"
-    report += f"💸 *Final Settlement:*\n\n"
+    report += f"💸 *SETTLEMENT:*\n\n"
 
     if settlements:
         for s in settlements:
             report += (
                 f"👤 *{s['from_name']}* → pays → "
-                f"*{s['to_name']}*\n"
-                f"   Amount: {s['amount']:.2f} {currency}\n\n"
+                f"*{s['to_name']}* : "
+                f"`{s['amount']:.2f}` {currency}\n"
             )
+        for name in settled_users:
+            report += f"✅ *{name}* → settled\n"
     else:
-        report += "✅ Everyone is settled!\n"
+        report += "✅ All settled — no payments needed!\n"
 
     # Download buttons
     keyboard = InlineKeyboardMarkup([

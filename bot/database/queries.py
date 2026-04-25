@@ -106,80 +106,6 @@ def get_group_members(group_id):
     conn.close()
     return members
 
-# ─── REPORT QUERIES ──────────────────────────────────────
-
-def get_balances(group_id, start_date, end_date):
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    # Get all expenses in period
-    cursor.execute("""
-        SELECT e.id, e.paid_by, e.shared_amount, e.created_at, u.first_name
-        FROM expenses e
-        JOIN users u ON e.paid_by = u.id
-        WHERE e.group_id = %s
-        AND e.created_at BETWEEN %s AND %s
-        AND e.shared_amount > 0
-        ORDER BY e.created_at
-    """, (group_id, start_date, end_date))
-    expenses = cursor.fetchall()
-
-    # Get all splits in period
-    cursor.execute("""
-        SELECT es.expense_id, es.user_id, es.amount, u.first_name
-        FROM expense_splits es
-        JOIN users u ON es.user_id = u.id
-        JOIN expenses e ON es.expense_id = e.id
-        WHERE e.group_id = %s
-        AND e.created_at BETWEEN %s AND %s
-    """, (group_id, start_date, end_date))
-    splits = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
-    return expenses, splits
-
-
-def get_member_spending(group_id, start_date, end_date):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT u.id, u.first_name,
-               COALESCE(SUM(e.shared_amount), 0) as total_paid,
-               COALESCE(SUM(es.amount), 0) as fair_share
-        FROM users u
-        JOIN group_members gm ON u.id = gm.user_id
-        LEFT JOIN expenses e ON e.paid_by = u.id
-            AND e.group_id = %s
-            AND e.created_at BETWEEN %s AND %s
-        LEFT JOIN expense_splits es ON es.user_id = u.id
-            JOIN expenses e2 ON es.expense_id = e2.id
-            AND e2.group_id = %s
-            AND e2.created_at BETWEEN %s AND %s
-        WHERE gm.group_id = %s
-        AND gm.is_active = TRUE
-        GROUP BY u.id, u.first_name
-    """, (group_id, start_date, end_date,
-          group_id, start_date, end_date,
-          group_id))
-    result = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return result
-
-
-def get_group_by_id(group_id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT id, name, currency, invite_code, admin_id
-        FROM groups WHERE id = %s
-    """, (group_id,))
-    group = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    return group
-
 # ─── EXPENSE QUERIES ─────────────────────────────────────
 
 def add_expense(group_id, paid_by, total_amount, shared_amount,
@@ -240,14 +166,17 @@ def get_active_members_at_date(group_id, date):
 def get_balances(group_id, start_date, end_date):
     conn = get_connection()
     cursor = conn.cursor()
+
+    # Use expense_date (the actual purchase date, not created_at)
     cursor.execute("""
-        SELECT e.id, e.paid_by, e.shared_amount, e.created_at, u.first_name
+        SELECT e.id, e.paid_by, e.shared_amount, e.expense_date, u.first_name
         FROM expenses e
         JOIN users u ON e.paid_by = u.id
         WHERE e.group_id = %s
-        AND e.created_at BETWEEN %s AND %s
+        AND e.expense_date BETWEEN %s AND %s
         AND e.shared_amount > 0
-        ORDER BY e.created_at
+        AND e.is_deleted = FALSE
+        ORDER BY e.expense_date
     """, (group_id, start_date, end_date))
     expenses = cursor.fetchall()
 
@@ -257,7 +186,8 @@ def get_balances(group_id, start_date, end_date):
         JOIN users u ON es.user_id = u.id
         JOIN expenses e ON es.expense_id = e.id
         WHERE e.group_id = %s
-        AND e.created_at BETWEEN %s AND %s
+        AND e.expense_date BETWEEN %s AND %s
+        AND e.is_deleted = FALSE
     """, (group_id, start_date, end_date))
     splits = cursor.fetchall()
 
@@ -282,8 +212,8 @@ def get_first_expense_date(group_id):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT MIN(created_at) FROM expenses
-        WHERE group_id = %s
+        SELECT MIN(expense_date) FROM expenses
+        WHERE group_id = %s AND is_deleted = FALSE
     """, (group_id,))
     result = cursor.fetchone()[0]
     cursor.close()
