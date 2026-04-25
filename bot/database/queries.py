@@ -144,6 +144,11 @@ def add_expense_split(expense_id, user_id, amount, percentage=None):
 
 
 def get_active_members_at_date(group_id, date):
+    """
+    Returns members who were active on the given date.
+    Compares DATE(joined_at) so that members who joined
+    on the same day as the expense are always included.
+    """
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -151,8 +156,8 @@ def get_active_members_at_date(group_id, date):
         FROM users u
         JOIN group_members gm ON u.id = gm.user_id
         WHERE gm.group_id = %s
-        AND gm.joined_at <= %s
-        AND (gm.left_at IS NULL OR gm.left_at > %s)
+        AND DATE(gm.joined_at) <= %s
+        AND (gm.left_at IS NULL OR DATE(gm.left_at) > %s)
         AND gm.is_active = TRUE
     """, (group_id, date, date))
     members = cursor.fetchall()

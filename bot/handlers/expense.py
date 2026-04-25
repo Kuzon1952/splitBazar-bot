@@ -224,9 +224,11 @@ async def save_expense(update: Update, context, receipt_file_id):
     personal = context.user_data['personal_amount']
     split_type = context.user_data.get('split_type', 'equal')
     description = context.user_data.get('description')
-    #now = datetime.now()
     now = datetime.now()
     expense_date = context.user_data.get('expense_date', now.date())
+    # Ensure expense_date is always a date object (not datetime)
+    if hasattr(expense_date, 'date'):
+        expense_date = expense_date.date()
 
 
     expense_id = add_expense(
