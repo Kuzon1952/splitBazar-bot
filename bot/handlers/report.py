@@ -6,15 +6,16 @@ import os
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     ContextTypes, MessageHandler, ConversationHandler,
-    CallbackQueryHandler, filters
+    CallbackQueryHandler, filters, CommandHandler
 )
 from bot.database.queries import (
     get_user_groups, get_balances,
     get_group_by_id, get_first_expense_date
 )
 from bot.utils.calculations import calculate_balances, calculate_settlements
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as date_type
 from bot.utils.time_utils import now_moscow
+from bot.utils.menu_guard import MENU_BUTTON_FILTER, exit_to_menu
 
 # States
 SELECT_GROUP = 0
@@ -208,137 +209,146 @@ async def enter_custom_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"{end_date.strftime('%d.%m.%Y')}"
     )
 
+    # Normalize to date objects
+    start = start_date.date() if hasattr(start_date, 'date') else start_date
+    end = end_date.date() if hasattr(end_date, 'date') else end_date
+
     await generate_report(
         update.message, context, group_id,
-        start_date, end_date, period_label
+        start, end, period_label
     )
     return ConversationHandler.END
+
 
 async def generate_report(
     message, context, group_id, start_date, end_date, period_label
 ):
-    group = get_group_by_id(group_id)
-    currency = group[2]
+    try:
+        group = get_group_by_id(group_id)
+        currency = group[2]
 
-    expenses, splits = get_balances(
-        group_id, start_date, end_date
-    )
-
-    if not expenses:
-        await message.reply_text(
-            f"📊 *{group[1]}*\n"
-            f"📅 {period_label}\n\n"
-            f"❌ No expenses found in this period.",
-            parse_mode="Markdown"
-        )
-        return
-
-    from bot.database.queries import get_group_members
-    all_members = get_group_members(group_id)  # all active members
-
-    balances = calculate_balances(expenses, splits)
-    settlements = calculate_settlements(balances)
-    all_expenses = get_expenses_for_report(
-        group_id, start_date, end_date
-    )
-
-    # Ensure ALL group members appear in balances (even if 0 paid, 0 share)
-    for m in all_members:
-        uid, name = m[0], m[1]
-        if uid not in balances:
-            balances[uid] = {'name': name, 'paid': 0.0, 'share': 0.0, 'balance': 0.0}
-
-    # Recalculate settlements with full member list
-    settlements = calculate_settlements(balances)
-
-    # Build report text
-    report = f"📊 *SplitBazar — Expense Report*\n"
-    report += f"🏠 {group[1]}\n"
-    report += f"📅 {period_label}\n"
-    report += f"━━━━━━━━━━━━━━━━━━━━\n\n"
-
-    report += f"👥 *MEMBERS:*\n"
-    for m in all_members:
-        report += f"   {m[1]}\n"
-    report += f"\n"
-
-    report += f"━━━━━━━━━━━━━━━━━━━━\n"
-    report += f"💰 *SUMMARY:*\n\n"
-
-    settled_users = []
-    for uid, data in balances.items():
-        balance = data['balance']
-        paid = data['paid']
-        share = data['share']
-        name = data['name']
-
-        if abs(balance) < 0.01:
-            status = "0 settled ✅"
-            emoji = "✅"
-            settled_users.append(name)
-        elif balance > 0:
-            status = f"+{balance:.2f} gets back 💚"
-            emoji = "💚"
-        else:
-            status = f"{balance:.2f} owes ⚠️"
-            emoji = "⚠️"
-
-        report += (
-            f"{emoji} *{name}*\n"
-            f"   Paid: `{paid:.2f}` {currency}  "
-            f"Share: `{share:.2f}` {currency}  "
-            f"│ {status}\n\n"
+        expenses, splits = get_balances(
+            group_id, start_date, end_date
         )
 
-    report += f"━━━━━━━━━━━━━━━━━━━━\n"
-    report += f"💸 *SETTLEMENT:*\n\n"
-
-    if settlements:
-        for s in settlements:
-            report += (
-                f"👤 *{s['from_name']}* → pays → "
-                f"*{s['to_name']}* : "
-                f"`{s['amount']:.2f}` {currency}\n"
+        if not expenses:
+            await message.reply_text(
+                f"📊 *{group[1]}*\n"
+                f"📅 {period_label}\n\n"
+                f"❌ No expenses found in this period.",
+                parse_mode="Markdown"
             )
-        for name in settled_users:
-            report += f"✅ *{name}* → settled\n"
-    else:
-        report += "✅ All settled — no payments needed!\n"
+            return
 
-    # Download buttons
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "📄 Download PDF",
-                callback_data=f"download_pdf_{group_id}"
-            ),
-            InlineKeyboardButton(
-                "📊 Download Excel",
-                callback_data=f"download_excel_{group_id}"
-            ),
-        ]
-    ])
+        from bot.database.queries import get_group_members
+        all_members = get_group_members(group_id)  # all active members
 
-    await message.reply_text(
-        report,
-        parse_mode="Markdown",
-        reply_markup=keyboard
-    )
+        balances = calculate_balances(expenses, splits)
+        all_expenses = get_expenses_for_report(
+            group_id, start_date, end_date
+        )
 
-# Store data for download using bot_data
-    if 'report_cache' not in context.bot_data:
-        context.bot_data['report_cache'] = {}
+        # Ensure ALL group members appear in balances (even if 0 paid, 0 share)
+        for m in all_members:
+            uid, name = m[0], m[1]
+            if uid not in balances:
+                balances[uid] = {'name': name, 'paid': 0.0, 'share': 0.0, 'balance': 0.0}
 
-    context.bot_data['report_cache'][group_id] = {
-        'group_name': group[1],
-        'currency': currency,
-        'period_label': period_label,
-        'balances': balances,
-        'settlements': settlements,
-        'expenses': all_expenses,
-    }
+        # Recalculate settlements with full member list
+        settlements = calculate_settlements(balances)
 
-from telegram.ext import CommandHandler
+        # Build report text
+        report = "📊 *SplitBazar — Expense Report*\n"
+        report += f"🏠 {group[1]}\n"
+        report += f"📅 {period_label}\n"
+        report += "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        report += "👥 *MEMBERS:*\n"
+        for m in all_members:
+            report += f"   {m[1]}\n"
+        report += "\n"
+
+        report += "━━━━━━━━━━━━━━━━━━━━\n"
+        report += "💰 *SUMMARY:*\n\n"
+
+        settled_users = []
+        for uid, data in balances.items():
+            balance = float(data['balance'])
+            paid = float(data['paid'])
+            share = float(data['share'])
+            name = data['name']
+
+            if abs(balance) < 0.01:
+                status = "settled ✅"
+                emoji = "✅"
+                settled_users.append(name)
+            elif balance > 0:
+                status = f"+{balance:.2f} gets back 💚"
+                emoji = "💚"
+            else:
+                status = f"{balance:.2f} owes ⚠️"
+                emoji = "⚠️"
+
+            report += (
+                f"{emoji} *{name}*\n"
+                f"   Paid: `{paid:.2f}` {currency}  "
+                f"Share: `{share:.2f}` {currency}  "
+                f"│ {status}\n\n"
+            )
+
+        report += "━━━━━━━━━━━━━━━━━━━━\n"
+        report += "💸 *SETTLEMENT:*\n\n"
+
+        if settlements:
+            for s in settlements:
+                report += (
+                    f"👤 *{s['from_name']}* → pays → "
+                    f"*{s['to_name']}* : "
+                    f"`{s['amount']:.2f}` {currency}\n"
+                )
+            for name in settled_users:
+                report += f"✅ *{name}* → settled\n"
+        else:
+            report += "✅ All settled — no payments needed!\n"
+
+        # Download buttons
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "📄 Download PDF",
+                    callback_data=f"download_pdf_{group_id}"
+                ),
+                InlineKeyboardButton(
+                    "📊 Download Excel",
+                    callback_data=f"download_excel_{group_id}"
+                ),
+            ]
+        ])
+
+        await message.reply_text(
+            report,
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
+
+        # Store data for download using bot_data
+        if 'report_cache' not in context.bot_data:
+            context.bot_data['report_cache'] = {}
+
+        context.bot_data['report_cache'][group_id] = {
+            'group_name': group[1],
+            'currency': currency,
+            'period_label': period_label,
+            'balances': balances,
+            'settlements': settlements,
+            'expenses': all_expenses,
+        }
+
+    except Exception as e:
+        await message.reply_text(
+            f"❌ Error generating report: {str(e)}\n\n"
+            "Please try again or contact support."
+        )
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
@@ -431,12 +441,14 @@ def register_report_handlers(app):
                 )
             ],
             ENTER_CUSTOM_START: [
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     enter_custom_start
                 )
             ],
             ENTER_CUSTOM_END: [
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     enter_custom_end
