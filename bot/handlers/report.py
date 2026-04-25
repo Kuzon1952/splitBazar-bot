@@ -116,11 +116,14 @@ async def select_period(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_custom_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    today = now_moscow().replace(hour=23, minute=59, second=59)
+    today = now_moscow().date()
     first_date = context.user_data['first_expense_date']
+    # Normalize: psycopg2 returns date object from DATE column, not datetime
+    if not isinstance(first_date, date_type):
+        first_date = first_date.date()
 
     try:
-        start_date = datetime.strptime(update.message.text.strip(), "%d.%m.%Y")
+        start_date = datetime.strptime(update.message.text.strip(), "%d.%m.%Y").date()
     except ValueError:
         await update.message.reply_text(
             f"❌ *Wrong format!*\n\n"
@@ -131,7 +134,7 @@ async def enter_custom_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ENTER_CUSTOM_START
 
     # Check if before first expense
-    if start_date.date() < first_date.date():
+    if start_date < first_date:
         await update.message.reply_text(
             f"❌ *Invalid start date!*\n\n"
             f"Your group has expenses starting from:\n"
@@ -144,7 +147,7 @@ async def enter_custom_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return ENTER_CUSTOM_START
 
     # Check if future date
-    if start_date.date() > today.date():
+    if start_date > today:
         await update.message.reply_text(
             f"❌ *Invalid date!*\n\n"
             f"You cannot select a future date.\n"
@@ -154,7 +157,7 @@ async def enter_custom_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         return ENTER_CUSTOM_START
 
-    context.user_data['custom_start'] = start_date
+    context.user_data['custom_start'] = start_date  # always a date object now
     await update.message.reply_text(
         f"✅ Start date: `{start_date.strftime('%d.%m.%Y')}`\n\n"
         f"Now enter *end date:*\n"
@@ -166,12 +169,11 @@ async def enter_custom_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def enter_custom_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    today = now_moscow().replace(hour=23, minute=59, second=59)
-    start_date = context.user_data['custom_start']
+    today = now_moscow().date()
+    start_date = context.user_data['custom_start']  # already a date object
 
     try:
-        end_date = datetime.strptime(update.message.text.strip(), "%d.%m.%Y")
-        end_date = end_date.replace(hour=23, minute=59, second=59)
+        end_date = datetime.strptime(update.message.text.strip(), "%d.%m.%Y").date()
     except ValueError:
         await update.message.reply_text(
             f"❌ *Wrong format!*\n\n"
@@ -182,7 +184,7 @@ async def enter_custom_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTER_CUSTOM_END
 
     # Check if before start date
-    if end_date.date() < start_date.date():
+    if end_date < start_date:
         await update.message.reply_text(
             f"❌ *End date cannot be before start date!*\n\n"
             f"Start date: `{start_date.strftime('%d.%m.%Y')}`\n\n"
@@ -193,7 +195,7 @@ async def enter_custom_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTER_CUSTOM_END
 
     # Check if future date
-    if end_date.date() > today.date():
+    if end_date > today:
         await update.message.reply_text(
             f"❌ *Invalid date!*\n\n"
             f"End date cannot be in the future.\n"
@@ -204,18 +206,11 @@ async def enter_custom_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ENTER_CUSTOM_END
 
     group_id = context.user_data['report_group_id']
-    period_label = (
-        f"{start_date.strftime('%d.%m.%Y')} → "
-        f"{end_date.strftime('%d.%m.%Y')}"
-    )
-
-    # Normalize to date objects
-    start = start_date.date() if hasattr(start_date, 'date') else start_date
-    end = end_date.date() if hasattr(end_date, 'date') else end_date
+    period_label = f"{start_date.strftime('%d.%m.%Y')} → {end_date.strftime('%d.%m.%Y')}"
 
     await generate_report(
         update.message, context, group_id,
-        start, end, period_label
+        start_date, end_date, period_label
     )
     return ConversationHandler.END
 
