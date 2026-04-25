@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from bot.utils.time_utils import now_moscow
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     ContextTypes, MessageHandler, ConversationHandler,
@@ -59,7 +60,7 @@ async def select_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = int(query.data.split("_")[2])
     context.user_data['group_id'] = group_id
 
-    today = datetime.now()
+    today = now_moscow()
     yesterday = today - timedelta(days=1)
 
     keyboard = InlineKeyboardMarkup([
@@ -224,7 +225,7 @@ async def save_expense(update: Update, context, receipt_file_id):
     personal = context.user_data['personal_amount']
     split_type = context.user_data.get('split_type', 'equal')
     description = context.user_data.get('description')
-    now = datetime.now()
+    now = now_moscow()
     expense_date = context.user_data.get('expense_date', now.date())
     # Ensure expense_date is always a date object (not datetime)
     if hasattr(expense_date, 'date'):
@@ -283,7 +284,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     date_choice = query.data.split("_")[1]
-    today = datetime.now()
+    today = now_moscow()
     group_id = context.user_data['group_id']
     user = query.from_user
 
@@ -313,7 +314,7 @@ async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    today = datetime.now().date()
+    today = now_moscow().date()
     join_date = context.user_data['join_date']
 
     try:

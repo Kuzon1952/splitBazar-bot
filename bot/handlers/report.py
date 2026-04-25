@@ -14,6 +14,7 @@ from bot.database.queries import (
 )
 from bot.utils.calculations import calculate_balances, calculate_settlements
 from datetime import datetime, timedelta
+from bot.utils.time_utils import now_moscow
 
 # States
 SELECT_GROUP = 0
@@ -74,7 +75,7 @@ async def select_period(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     period = query.data.split("_")[1]
-    now = datetime.now()
+    now = now_moscow()
 
     if period == "custom":
         group_id = context.user_data['report_group_id']
@@ -114,7 +115,7 @@ async def select_period(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_custom_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    today = datetime.now().replace(hour=23, minute=59, second=59)
+    today = now_moscow().replace(hour=23, minute=59, second=59)
     first_date = context.user_data['first_expense_date']
 
     try:
@@ -164,7 +165,7 @@ async def enter_custom_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def enter_custom_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    today = datetime.now().replace(hour=23, minute=59, second=59)
+    today = now_moscow().replace(hour=23, minute=59, second=59)
     start_date = context.user_data['custom_start']
 
     try:
