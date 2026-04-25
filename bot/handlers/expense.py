@@ -99,13 +99,6 @@ async def select_type(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    menu_buttons = ["➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
-        "👥 My Groups", "🎯 My Target", "💬 Group Chat", "📝 ToDo List", "⚙️ Settings"]
-    
-    if update.message.text in menu_buttons:
-        await update.message.reply_text("⚠️ Please enter a valid amount, don't use menu buttons!")
-        return ENTER_TOTAL  # 👈 add this before the try block
-
     try:
         total = float(update.message.text.strip())
         context.user_data['total_amount'] = total
@@ -143,12 +136,6 @@ async def enter_total(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_shared(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    menu_buttons = ["➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
-        "👥 My Groups", "🎯 My Target", "💬 Group Chat", "📝 ToDo List", "⚙️ Settings"]
-    
-    if update.message.text in menu_buttons:
-        await update.message.reply_text("⚠️ Please enter a valid amount, don't use menu buttons!")
-        return ENTER_SHARED  # 👈 add this before the try block
     try:
         personal = float(update.message.text.strip())
         total = context.user_data['total_amount']
@@ -201,13 +188,6 @@ async def select_split(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    menu_buttons = ["➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
-        "👥 My Groups", "🎯 My Target", "💬 Group Chat", "📝 ToDo List", "⚙️ Settings"]
-    
-    if update.message.text in menu_buttons:
-        await update.message.reply_text("⚠️ Please type a description or send /skip!")
-        return ENTER_DESCRIPTION
-    
     if update.message.text != "/skip":
         context.user_data['description'] = update.message.text
     else:
@@ -399,21 +379,10 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
-async def end_conversation(update, context):
-    context.user_data.clear()
-    return -1  # ConversationHandler.END
-
 def register_expense_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex("^➕ Add Expense$"), add_expense_start),
-            MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
-            MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
-            MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
-            MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
-            MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
-            MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
-            MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
         ],
         states={
             SELECT_GROUP: [

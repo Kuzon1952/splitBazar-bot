@@ -20,6 +20,7 @@ from bot.utils.report_generator import (
 )
 from datetime import datetime
 import os
+from bot.utils.menu_guard import MENU_BUTTON_FILTER, exit_to_menu
 
 # States
 SELECT_GROUP = 0
@@ -344,22 +345,10 @@ async def cancel(
 
 
 
-async def end_conversation(update, context):
-    context.user_data.clear()
-    return -1  # ConversationHandler.END
-
 def register_reset_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex("^🔄 Reset Group$"), reset_start),
-            MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
-            MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
-            MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
-            MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
-            MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
-            MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
-            MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
-            MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
         ],
         states={
             SELECT_GROUP: [
@@ -369,14 +358,7 @@ def register_reset_handlers(app):
                 )
             ],
             VERIFY_PASSWORD: [
-                MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
-                MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
-                MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
-                MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
-                MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
-                MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
-                MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
-                MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     verify_password

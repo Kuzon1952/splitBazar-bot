@@ -102,7 +102,6 @@ async def display_todo_list(message, group_id):
 
     keyboard = []
 
-    # Mark done buttons for pending items
     if pending:
         for item in pending:
             qty = f" × {item[2]}" if item[2] else ""
@@ -111,7 +110,6 @@ async def display_todo_list(message, group_id):
                 callback_data=f"todo_done_{item[0]}"
             )])
 
-    # Action buttons
     keyboard.append([
         InlineKeyboardButton(
             "➕ Add Item",
@@ -183,19 +181,10 @@ async def handle_todo_action(
 async def enter_item(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ):
-    menu_buttons = ["➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
-    "👥 My Groups", "🎯 My Target", "💬 Group Chat", "📝 ToDo List", "⚙️ Settings"]
-
-    if update.message.text in menu_buttons:
-        await update.message.reply_text("⚠️ Please don't use menu buttons during this step!")
-        return ConversationHandler.END # 👈 change this to match the current state
-    
     user = update.effective_user
     group_id = context.user_data['todo_group_id']
     text = update.message.text.strip()
 
-    # Parse item and quantity
-    # Supports: "Rice, 2" or "Rice × 2" or just "Rice"
     item_name = text
     quantity = None
 
@@ -217,7 +206,6 @@ async def enter_item(
 
     qty_text = f" × {quantity}" if quantity else ""
 
-    # Notify all group members
     from bot.database.queries import (
         get_active_group_members, get_group_by_id
     )
@@ -227,7 +215,7 @@ async def enter_item(
     for member in members:
         if member[0] != user.id:
             try:
-                await update.get_bot().send_message(
+                await context.bot.send_message(
                     chat_id=member[0],
                     text=(
                         f"📝 *[{group[1]}] New ToDo Item!*\n\n"
@@ -256,22 +244,13 @@ async def cancel(
     return ConversationHandler.END
 
 
-
-async def end_conversation(update, context):
-    context.user_data.clear()
-    return -1  # ConversationHandler.END
-
 def register_todo_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
-            MessageHandler(filters.Regex("^📝 ToDo List$"), todo_start),
-            MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
-            MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
-            MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
-            MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
-            MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
-            MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
-            MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
+            MessageHandler(
+                filters.Regex("^📝 ToDo List$"),
+                todo_start
+            )
         ],
         states={
             SELECT_GROUP: [

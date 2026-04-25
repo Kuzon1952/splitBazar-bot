@@ -10,6 +10,7 @@ from bot.database.queries import (
     update_edit_request, get_edit_request, get_member_join_date
 )
 from datetime import datetime, timedelta
+from bot.utils.menu_guard import MENU_BUTTON_FILTER, exit_to_menu
 
 # States
 SELECT_GROUP = 0
@@ -410,13 +411,6 @@ async def select_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def enter_new_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    menu_buttons = ["➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
-    "👥 My Groups", "🎯 My Target", "💬 Group Chat", "📝 ToDo List", "⚙️ Settings"]
-
-    if update.message.text in menu_buttons:
-        await update.message.reply_text("⚠️ Please don't use menu buttons during this step!")
-        return ENTER_NEW_VALUE   # 👈 change this to match the current state
-
     field = context.user_data['edit_field']
     expense = context.user_data['editing_expense']
     expense_id = expense[0]
@@ -605,22 +599,11 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
-async def end_conversation(update, context):
-    context.user_data.clear()
-    return -1  # ConversationHandler.END
-
 def register_edit_handlers(app):
     # Edit expense conversation
     edit_conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex("^✏️ Edit Expense$"), edit_expense_start),
-            MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
-            MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
-            MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
-            MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
-            MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
-            MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
-            MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
         ],
         states={
             SELECT_GROUP: [
@@ -634,14 +617,7 @@ def register_edit_handlers(app):
                 )
             ],
             ENTER_DATE: [
-                MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
-                MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
-                MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
-                MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
-                MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
-                MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
-                MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
-                MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     enter_date
@@ -661,14 +637,7 @@ def register_edit_handlers(app):
                 ),
             ],
             ENTER_NEW_VALUE: [
-                MessageHandler(filters.Regex("^➕ Add Expense$"), end_conversation),
-                MessageHandler(filters.Regex("^📊 View Report$"), end_conversation),
-                MessageHandler(filters.Regex("^✏️ Edit Expense$"), end_conversation),
-                MessageHandler(filters.Regex("^👥 My Groups$"), end_conversation),
-                MessageHandler(filters.Regex("^🎯 My Target$"), end_conversation),
-                MessageHandler(filters.Regex("^💬 Group Chat$"), end_conversation),
-                MessageHandler(filters.Regex("^📝 ToDo List$"), end_conversation),
-                MessageHandler(filters.Regex("^⚙️ Settings$"), end_conversation),
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
                 MessageHandler(
                     filters.TEXT & ~filters.COMMAND,
                     enter_new_value
