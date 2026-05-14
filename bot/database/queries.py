@@ -398,6 +398,46 @@ def get_member_join_date(group_id, user_id):
     return result[0] if result else None
 
 
+def get_members_who_left(group_id, start_date, end_date):
+    """Returns members who left the group during [start_date, end_date]."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT u.id, u.first_name, DATE(gm.left_at) AS left_date
+        FROM users u
+        JOIN group_members gm ON u.id = gm.user_id
+        WHERE gm.group_id = %s
+          AND gm.is_active = FALSE
+          AND DATE(gm.left_at) BETWEEN %s AND %s
+        ORDER BY DATE(gm.left_at)
+    """, (group_id, start_date, end_date))
+    members = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return members
+
+
+def get_members_active_during_period(group_id, start_date, end_date):
+    """Returns all members who were active at any point in [start_date, end_date]."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT u.id, u.first_name,
+               DATE(gm.joined_at) AS joined_date,
+               DATE(gm.left_at)   AS left_date
+        FROM users u
+        JOIN group_members gm ON u.id = gm.user_id
+        WHERE gm.group_id = %s
+          AND DATE(gm.joined_at) <= %s
+          AND (gm.left_at IS NULL OR DATE(gm.left_at) >= %s)
+        ORDER BY gm.joined_at
+    """, (group_id, end_date, start_date))
+    members = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return members
+
+
 # ─── BUDGET TARGET QUERIES ───────────────────────────────
 
 def set_budget_target(user_id, group_id, amount, month, year):

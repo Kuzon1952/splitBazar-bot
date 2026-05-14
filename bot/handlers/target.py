@@ -176,7 +176,7 @@ async def enter_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def check_budget_alert(
-    context, user_id, group_id, currency
+    context, user_id, group_id, currency, group_name=""
 ):
     """Call this after every expense to check budget"""
     now = datetime.now()
@@ -191,12 +191,13 @@ async def check_budget_alert(
         user_id, group_id, now.month, now.year
     )
     percentage = (spent / target) * 100
+    prefix = f"[{group_name}] " if group_name else ""
 
     if percentage >= 100:
         await context.bot.send_message(
             chat_id=user_id,
             text=(
-                f"🚨 *Budget Exceeded!*\n\n"
+                f"🚨 *{prefix}Budget EXCEEDED!*\n\n"
                 f"Target : {target:.2f} {currency}\n"
                 f"Spent  : {spent:.2f} {currency}\n"
                 f"Over by: {spent-target:.2f} {currency}\n\n"
@@ -208,11 +209,10 @@ async def check_budget_alert(
         await context.bot.send_message(
             chat_id=user_id,
             text=(
-                f"⚠️ *Budget Warning!*\n\n"
-                f"Target : {target:.2f} {currency}\n"
-                f"Spent  : {spent:.2f} {currency}\n"
-                f"Left   : {target-spent:.2f} {currency}\n\n"
-                f"You have used {percentage:.1f}% of your budget!"
+                f"⚠️ *{prefix}Budget 80% reached:* "
+                f"{spent:.2f}/{target:.2f} {currency}\n\n"
+                f"Left   : {target-spent:.2f} {currency}\n"
+                f"Used   : {percentage:.1f}% of your budget"
             ),
             parse_mode="Markdown"
         )

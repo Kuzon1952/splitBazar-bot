@@ -24,6 +24,8 @@ ENTER_SHARED = 3
 SELECT_SPLIT = 4
 ENTER_DESCRIPTION = 5
 UPLOAD_RECEIPT = 6
+SELECT_SPECIFIC_MEMBERS = 9
+ENTER_CUSTOM_PCT = 10
 
 async def add_expense_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -182,7 +184,143 @@ async def select_split(update: Update, context: ContextTypes.DEFAULT_TYPE):
     split_type = query.data.split("_")[1]
     context.user_data['split_type'] = split_type
 
-    await query.message.reply_text(
+    if split_type == 'equal':
+        await query.message.reply_text(
+            "📝 Add a description (optional)\n\nOr send /skip to skip:"
+        )
+        return ENTER_DESCRIPTION
+    elif split_type == 'specific':
+        return await _start_specific_selection(query.message, context)
+    else:
+        return await _start_custom_pct(query.message, context)
+
+
+def _build_specific_keyboard(members, selected):
+    keyboard = []
+    for uid, name in members:
+        icon = "✅" if selected.get(uid, True) else "❌"
+        keyboard.append([InlineKeyboardButton(
+            f"{icon} {name}", callback_data=f"spctoggle_{uid}"
+        )])
+    keyboard.append([InlineKeyboardButton(
+        "✔️ Confirm Selection", callback_data="spctoggle_confirm"
+    )])
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def _start_specific_selection(message, context):
+    group_id = context.user_data['group_id']
+    expense_date = context.user_data.get('expense_date', now_moscow().date())
+    active_members = get_active_members_at_date(group_id, expense_date)
+
+    context.user_data['specific_members'] = [(m[0], m[1]) for m in active_members]
+    context.user_data['specific_selected'] = {m[0]: True for m in active_members}
+
+    names = ", ".join(m[1] for m in active_members)
+    keyboard = _build_specific_keyboard(
+        context.user_data['specific_members'],
+        context.user_data['specific_selected']
+    )
+    await message.reply_text(
+        f"👥 *Select members for this expense:*\n\n"
+        f"Active: {names}\n\n"
+        f"Tap to toggle. ✅ = included  ❌ = excluded.",
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
+    return SELECT_SPECIFIC_MEMBERS
+
+
+async def toggle_specific_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    suffix = query.data[len("spctoggle_"):]
+
+    if suffix == "confirm":
+        selected = context.user_data.get('specific_selected', {})
+        members = context.user_data.get('specific_members', [])
+        chosen = [(uid, name) for uid, name in members if selected.get(uid, True)]
+
+        if not chosen:
+            await query.answer("⚠️ Select at least one member!", show_alert=True)
+            return SELECT_SPECIFIC_MEMBERS
+
+        context.user_data['specific_chosen'] = chosen
+        await query.message.reply_text(
+            "📝 Add a description (optional)\n\nOr send /skip to skip:"
+        )
+        return ENTER_DESCRIPTION
+
+    uid = int(suffix)
+    selected = context.user_data.get('specific_selected', {})
+    selected[uid] = not selected.get(uid, True)
+    context.user_data['specific_selected'] = selected
+
+    members = context.user_data.get('specific_members', [])
+    keyboard = _build_specific_keyboard(members, selected)
+    await query.message.edit_reply_markup(reply_markup=keyboard)
+    return SELECT_SPECIFIC_MEMBERS
+
+
+async def _start_custom_pct(message, context):
+    group_id = context.user_data['group_id']
+    expense_date = context.user_data.get('expense_date', now_moscow().date())
+    active_members = get_active_members_at_date(group_id, expense_date)
+
+    context.user_data['custom_pct_members'] = [(m[0], m[1]) for m in active_members]
+
+    n = len(active_members)
+    names = "  ".join(m[1] for m in active_members)
+    pct_each = round(100 / n) if n > 0 else 0
+    example = " ".join([str(pct_each)] * n)
+
+    await message.reply_text(
+        f"📊 *Custom Percentages*\n\n"
+        f"Members: `{names}`\n\n"
+        f"Enter % for each *(space-separated)*, must total 100%\n\n"
+        f"Example: `{example}`",
+        parse_mode="Markdown"
+    )
+    return ENTER_CUSTOM_PCT
+
+
+async def enter_custom_pct(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    members = context.user_data.get('custom_pct_members', [])
+    parts = update.message.text.strip().split()
+
+    if len(parts) != len(members):
+        names = "  ".join(name for _, name in members)
+        await update.message.reply_text(
+            f"❌ Expected *{len(members)}* values, got *{len(parts)}*.\n\n"
+            f"Members: `{names}`\n"
+            f"Enter {len(members)} numbers separated by spaces:",
+            parse_mode="Markdown"
+        )
+        return ENTER_CUSTOM_PCT
+
+    try:
+        percentages = [float(p) for p in parts]
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Invalid numbers. Example: `50 25 25`",
+            parse_mode="Markdown"
+        )
+        return ENTER_CUSTOM_PCT
+
+    total = sum(percentages)
+    if abs(total - 100) > 0.5:
+        await update.message.reply_text(
+            f"❌ *Total must be 100%*\n\n"
+            f"Your total: `{total:.1f}%`\n"
+            f"Difference: `{abs(100 - total):.1f}%`\n\n"
+            f"Please correct and try again:",
+            parse_mode="Markdown"
+        )
+        return ENTER_CUSTOM_PCT
+
+    context.user_data['custom_percentages'] = percentages
+    await update.message.reply_text(
         "📝 Add a description (optional)\n\nOr send /skip to skip:"
     )
     return ENTER_DESCRIPTION
@@ -240,31 +378,47 @@ async def save_expense(update: Update, context, receipt_file_id):
 
     if shared > 0:
         active_members = get_active_members_at_date(group_id, expense_date)
+
         if split_type == 'equal' and active_members:
             split_amount = round(shared / len(active_members), 2)
             for member in active_members:
                 add_expense_split(expense_id, member[0], split_amount)
 
-                # Check budget alert
-                group = get_group_by_id(group_id)
-                if group:
-                    await check_budget_alert(
-                        context, user.id, group_id, group[2]
-                    )
+        elif split_type == 'specific':
+            chosen = context.user_data.get(
+                'specific_chosen',
+                [(m[0], m[1]) for m in active_members]
+            )
+            if chosen:
+                split_amount = round(shared / len(chosen), 2)
+                for uid, _name in chosen:
+                    add_expense_split(expense_id, uid, split_amount)
 
-                    # Large expense alert (if shared > 1000)
-                    if shared > 1000:
-                        await send_large_expense_alert(
-                            context,
-                            group_id,
-                            group[1],
-                            group[2],
-                            user.first_name,
-                            total,
-                            split_type,
-                            description,
-                            expense_date.strftime('%d.%m.%Y')
-                        )
+        elif split_type == 'custom':
+            members = context.user_data.get('custom_pct_members', [])
+            percentages = context.user_data.get('custom_percentages', [])
+            for i, (uid, _name) in enumerate(members):
+                if i < len(percentages) and percentages[i] > 0:
+                    amount = round(shared * percentages[i] / 100, 2)
+                    add_expense_split(expense_id, uid, amount, percentages[i])
+
+        group = get_group_by_id(group_id)
+        if group:
+            await check_budget_alert(
+                context, user.id, group_id, group[2], group[1]
+            )
+            if shared > 1000:
+                await send_large_expense_alert(
+                    context,
+                    group_id,
+                    group[1],
+                    group[2],
+                    user.first_name,
+                    total,
+                    split_type,
+                    description,
+                    expense_date.strftime('%d.%m.%Y')
+                )
 
 
     await update.message.reply_text(
@@ -427,6 +581,18 @@ def register_expense_handlers(app):
             SELECT_SPLIT: [
                 CallbackQueryHandler(
                     select_split, pattern="^split_"
+                )
+            ],
+            SELECT_SPECIFIC_MEMBERS: [
+                CallbackQueryHandler(
+                    toggle_specific_member, pattern="^spctoggle_"
+                )
+            ],
+            ENTER_CUSTOM_PCT: [
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    enter_custom_pct
                 )
             ],
             ENTER_DESCRIPTION: [
