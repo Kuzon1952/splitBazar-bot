@@ -143,6 +143,34 @@ def add_expense_split(expense_id, user_id, amount, percentage=None):
     conn.close()
 
 
+def delete_expense_splits(expense_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM expense_splits WHERE expense_id = %s",
+        (expense_id,)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def get_expense_splits(expense_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT es.user_id, es.amount, es.percentage, u.first_name
+        FROM expense_splits es
+        JOIN users u ON es.user_id = u.id
+        WHERE es.expense_id = %s
+        ORDER BY es.id
+    """, (expense_id,))
+    splits = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return splits
+
+
 def get_active_members_at_date(group_id, date):
     """
     Returns members who were active on the given date.
@@ -239,6 +267,7 @@ def get_expenses_by_date(group_id, date):
         WHERE e.group_id = %s
         AND e.expense_date = %s
         AND e.is_deleted = FALSE
+        AND e.split_type != 'settlement'
         ORDER BY e.created_at
     """, (group_id, date))
     expenses = cursor.fetchall()
@@ -480,6 +509,7 @@ def get_user_spending_this_month(user_id, group_id, month, year):
         AND EXTRACT(MONTH FROM expense_date) = %s
         AND EXTRACT(YEAR FROM expense_date) = %s
         AND is_deleted = FALSE
+        AND split_type != 'settlement'
     """, (user_id, group_id, month, year))
     result = cursor.fetchone()
     cursor.close()

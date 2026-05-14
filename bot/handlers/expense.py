@@ -365,16 +365,18 @@ async def save_expense(update: Update, context, receipt_file_id):
     description = context.user_data.get('description')
     now = now_moscow()
     expense_date = context.user_data.get('expense_date', now.date())
-    # Ensure expense_date is always a date object (not datetime)
     if hasattr(expense_date, 'date'):
         expense_date = expense_date.date()
-
 
     expense_id = add_expense(
         group_id, user.id, total, shared,
         personal, split_type, description,
         receipt_file_id, expense_date
     )
+
+    group = get_group_by_id(group_id)
+    currency = group[2] if group else ""
+    split_details = ""
 
     if shared > 0:
         active_members = get_active_members_at_date(group_id, expense_date)
@@ -383,6 +385,9 @@ async def save_expense(update: Update, context, receipt_file_id):
             split_amount = round(shared / len(active_members), 2)
             for member in active_members:
                 add_expense_split(expense_id, member[0], split_amount)
+            split_details = "\n\n📋 *Split breakdown:*\n"
+            for m in active_members:
+                split_details += f"   {m[1]}: `{split_amount:.2f}` {currency}\n"
 
         elif split_type == 'specific':
             chosen = context.user_data.get(
@@ -393,16 +398,23 @@ async def save_expense(update: Update, context, receipt_file_id):
                 split_amount = round(shared / len(chosen), 2)
                 for uid, _name in chosen:
                     add_expense_split(expense_id, uid, split_amount)
+                split_details = "\n\n📋 *Split breakdown:*\n"
+                for uid, name in chosen:
+                    split_details += f"   {name}: `{split_amount:.2f}` {currency}\n"
 
         elif split_type == 'custom':
             members = context.user_data.get('custom_pct_members', [])
             percentages = context.user_data.get('custom_percentages', [])
+            split_details = "\n\n📋 *Split breakdown:*\n"
             for i, (uid, _name) in enumerate(members):
                 if i < len(percentages) and percentages[i] > 0:
                     amount = round(shared * percentages[i] / 100, 2)
                     add_expense_split(expense_id, uid, amount, percentages[i])
+                    split_details += (
+                        f"   {members[i][1]}: `{amount:.2f}` {currency}"
+                        f" ({percentages[i]:.0f}%)\n"
+                    )
 
-        group = get_group_by_id(group_id)
         if group:
             await check_budget_alert(
                 context, user.id, group_id, group[2], group[1]
@@ -420,15 +432,15 @@ async def save_expense(update: Update, context, receipt_file_id):
                     expense_date.strftime('%d.%m.%Y')
                 )
 
-
     await update.message.reply_text(
         f"✅ *Expense Saved!*\n\n"
-        f"💰 Total       : {total}\n"
-        f"🍽️ Shared      : {shared}\n"
-        f"👤 Personal    : {personal}\n"
+        f"💰 Total       : {total} {currency}\n"
+        f"🍽️ Shared      : {shared} {currency}\n"
+        f"👤 Personal    : {personal} {currency}\n"
         f"📊 Split type  : {split_type}\n"
         f"📝 Description : {description or 'None'}\n"
-        f"📸 Receipt     : {'✅ Saved' if receipt_file_id else '❌ None'}\n\n"
+        f"📸 Receipt     : {'✅ Saved' if receipt_file_id else '❌ None'}"
+        f"{split_details}\n\n"
         f"Use 📊 View Report to see balances!",
         parse_mode="Markdown"
     )

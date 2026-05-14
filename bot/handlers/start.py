@@ -12,6 +12,7 @@ def main_menu_keyboard():
         ["✏️ Edit Expense", "👥 My Groups"],
         ["🎯 My Target",    "💬 Group Chat"],
         ["📝 ToDo List",    "⚙️ Settings"],
+        ["💳 Record Payment"],
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 

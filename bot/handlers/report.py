@@ -228,19 +228,19 @@ def _fmt_join(joined_date):
         return str(joined_date)
 
 
-def _download_keyboard(group_id):
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "📄 Download PDF",
-                callback_data=f"download_pdf_{group_id}"
-            ),
-            InlineKeyboardButton(
-                "📊 Download Excel",
-                callback_data=f"download_excel_{group_id}"
-            ),
-        ]
+def _download_keyboard(group_id, settle_buttons=None):
+    rows = list(settle_buttons or [])
+    rows.append([
+        InlineKeyboardButton(
+            "📄 Download PDF",
+            callback_data=f"download_pdf_{group_id}"
+        ),
+        InlineKeyboardButton(
+            "📊 Download Excel",
+            callback_data=f"download_excel_{group_id}"
+        ),
     ])
+    return InlineKeyboardMarkup(rows)
 
 
 async def _generate_simple_report(
@@ -319,6 +319,7 @@ async def _generate_simple_report(
     report += "━━━━━━━━━━━━━━━━━━━━\n"
     report += "💸 *SETTLEMENT:*\n\n"
 
+    settle_buttons = []
     if settlements:
         for s in settlements:
             report += (
@@ -326,6 +327,14 @@ async def _generate_simple_report(
                 f"*{s['to_name']}* : "
                 f"`{s['amount']:.2f}` {currency}\n"
             )
+            amount_cents = int(round(s['amount'] * 100))
+            settle_buttons.append([InlineKeyboardButton(
+                f"✅ I Paid  {s['from_name']} → {s['to_name']}",
+                callback_data=(
+                    f"settle_{group_id}_{s['from_id']}"
+                    f"_{s['to_id']}_{amount_cents}"
+                )
+            )])
         for name in settled_users:
             report += f"✅ *{name}* → settled\n"
     else:
@@ -334,7 +343,7 @@ async def _generate_simple_report(
     await message.reply_text(
         report,
         parse_mode="Markdown",
-        reply_markup=_download_keyboard(group_id)
+        reply_markup=_download_keyboard(group_id, settle_buttons)
     )
 
     if 'report_cache' not in context.bot_data:
@@ -483,6 +492,7 @@ async def _generate_split_report(
         report += f"   {data['name']} : `{b:+.2f}`\n"
     report += "\n"
 
+    settle_buttons = []
     if final_settlements:
         for s in final_settlements:
             report += (
@@ -490,6 +500,14 @@ async def _generate_split_report(
                 f"*{s['to_name']}* : "
                 f"`{s['amount']:.2f}` {currency}\n"
             )
+            amount_cents = int(round(s['amount'] * 100))
+            settle_buttons.append([InlineKeyboardButton(
+                f"✅ I Paid  {s['from_name']} → {s['to_name']}",
+                callback_data=(
+                    f"settle_{group_id}_{s['from_id']}"
+                    f"_{s['to_id']}_{amount_cents}"
+                )
+            )])
     else:
         report += "✅ All active members settled!\n"
 
@@ -511,7 +529,7 @@ async def _generate_split_report(
     await message.reply_text(
         report,
         parse_mode="Markdown",
-        reply_markup=_download_keyboard(group_id)
+        reply_markup=_download_keyboard(group_id, settle_buttons)
     )
 
     all_expenses = get_expenses_for_report(group_id, start_date, end_date)
@@ -631,6 +649,110 @@ async def handle_download(
             f"❌ Error generating file: {str(e)}"
         )
 
+async def handle_settle_button(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    query = update.callback_query
+    parts = query.data.split("_")
+    # settle_{group_id}_{from_uid}_{to_uid}_{amount_cents}
+    group_id = int(parts[1])
+    from_uid = int(parts[2])
+    to_uid = int(parts[3])
+    amount_cents = int(parts[4])
+    amount = amount_cents / 100
+
+    user = query.from_user
+    if user.id != from_uid:
+        await query.answer(
+            "❌ Only the debtor can mark this as paid!",
+            show_alert=True
+        )
+        return
+
+    await query.answer()
+
+    from bot.database.queries import get_user
+    to_user = get_user(to_uid)
+    to_name = to_user[2] if to_user else "Unknown"
+
+    group = get_group_by_id(group_id)
+    currency = group[2] if group else ""
+
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "✅ Confirm",
+                callback_data=(
+                    f"settle_confirm_{group_id}"
+                    f"_{from_uid}_{to_uid}_{amount_cents}"
+                )
+            ),
+            InlineKeyboardButton(
+                "❌ Cancel",
+                callback_data="settle_cancel"
+            ),
+        ]
+    ])
+
+    await query.message.reply_text(
+        f"💳 *Confirm Payment*\n\n"
+        f"You paid *{to_name}* : `{amount:.2f}` {currency}\n\n"
+        f"Record this settlement?",
+        parse_mode="Markdown",
+        reply_markup=keyboard
+    )
+
+
+async def handle_settle_confirm(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    query = update.callback_query
+    parts = query.data.split("_")
+    # settle_confirm_{group_id}_{from_uid}_{to_uid}_{amount_cents}
+    group_id = int(parts[2])
+    from_uid = int(parts[3])
+    to_uid = int(parts[4])
+    amount_cents = int(parts[5])
+    amount = amount_cents / 100
+
+    user = query.from_user
+    if user.id != from_uid:
+        await query.answer("❌ Not authorized!", show_alert=True)
+        return
+
+    await query.answer()
+
+    from bot.database.queries import get_user, add_expense, add_expense_split
+    to_user = get_user(to_uid)
+    to_name = to_user[2] if to_user else "Unknown"
+    group = get_group_by_id(group_id)
+    currency = group[2] if group else ""
+
+    description = f"Settlement: {user.first_name} → {to_name}"
+    today = now_moscow().date()
+
+    expense_id = add_expense(
+        group_id, from_uid, amount, amount, 0,
+        'settlement', description, None, today
+    )
+    add_expense_split(expense_id, to_uid, amount)
+
+    await query.message.reply_text(
+        f"✅ *Payment Recorded!*\n\n"
+        f"You paid *{to_name}* `{amount:.2f}` {currency}\n\n"
+        f"Use 📊 View Report to see updated balances!",
+        parse_mode="Markdown"
+    )
+
+
+async def handle_settle_cancel(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    query = update.callback_query
+    await query.answer()
+    await query.message.reply_text("❌ Cancelled.")
+
+
 def register_report_handlers(app):
     conv_handler = ConversationHandler(
         entry_points=[
@@ -675,5 +797,20 @@ def register_report_handlers(app):
     app.add_handler(
         CallbackQueryHandler(
             handle_download, pattern="^download_"
+        )
+    )
+    app.add_handler(
+        CallbackQueryHandler(
+            handle_settle_button, pattern=r"^settle_\d+_\d+_\d+_\d+$"
+        )
+    )
+    app.add_handler(
+        CallbackQueryHandler(
+            handle_settle_confirm, pattern="^settle_confirm_"
+        )
+    )
+    app.add_handler(
+        CallbackQueryHandler(
+            handle_settle_cancel, pattern="^settle_cancel$"
         )
     )

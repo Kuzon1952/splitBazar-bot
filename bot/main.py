@@ -16,6 +16,7 @@ from bot.handlers.settings import register_settings_handlers
 from bot.handlers.todo import register_todo_handlers
 from bot.handlers.reset import register_reset_handlers
 from bot.handlers.chat import register_chat_handlers
+from bot.handlers.payment import register_payment_handlers
 
 load_dotenv()
 
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 MENU_BUTTONS = [
     "➕ Add Expense", "📊 View Report", "✏️ Edit Expense",
     "👥 My Groups", "🎯 My Target", "💬 Group Chat",
-    "📝 ToDo List", "⚙️ Settings"
+    "📝 ToDo List", "⚙️ Settings", "💳 Record Payment"
 ]
 
 async def global_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -60,6 +61,7 @@ def main():
     register_settings_handlers(app)
     register_todo_handlers(app)
     register_reset_handlers(app)
+    register_payment_handlers(app)
 
     logger.info("SplitBazar Bot is running...")
     app.run_polling()

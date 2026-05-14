@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes, ConversationHandler, filters
 MENU_BUTTON_FILTER = filters.Regex(
     r"^(➕ Add Expense|📊 View Report|✏️ Edit Expense|"
     r"👥 My Groups|🎯 My Target|📝 ToDo List|"
-    r"⚙️ Settings|💬 Group Chat)$"
+    r"⚙️ Settings|💬 Group Chat|💳 Record Payment)$"
 )
 
 

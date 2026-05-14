@@ -7,7 +7,9 @@ from bot.database.queries import (
     get_user_groups, get_expenses_by_date, get_expense_by_id,
     update_expense, soft_delete_expense, get_deleted_expenses,
     restore_expense, get_group_admin, create_edit_request,
-    update_edit_request, get_edit_request, get_member_join_date
+    update_edit_request, get_edit_request, get_member_join_date,
+    delete_expense_splits, get_expense_splits,
+    add_expense_split, get_active_members_at_date
 )
 from datetime import datetime, timedelta
 from bot.utils.menu_guard import MENU_BUTTON_FILTER, exit_to_menu
@@ -20,6 +22,8 @@ SELECT_EXPENSE = 3
 SELECT_FIELD = 4
 ENTER_NEW_VALUE = 5
 CONFIRM_DELETE = 6
+SELECT_SPLIT_MEMBERS_EDIT = 7
+ENTER_CUSTOM_PCT_EDIT = 8
 
 # Admin states
 ADMIN_DELETED_LIST = 10
@@ -185,12 +189,10 @@ async def select_expense(update: Update, context: ContextTypes.DEFAULT_TYPE):
     group_id = expense[9]
     admin_id = get_group_admin(group_id)
 
-    # Check if own expense
     if expense[1] == user.id:
         await show_edit_options(query.message, expense)
         return SELECT_FIELD
     else:
-        # Need admin approval
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(
                 "📨 Request permission",
@@ -251,7 +253,6 @@ async def request_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     request_id = create_edit_request(expense_id, user.id, group_id)
     context.user_data['request_id'] = request_id
 
-    # Notify admin
     keyboard = InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
@@ -364,9 +365,18 @@ async def select_field(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CONFIRM_DELETE
 
     elif field == "amount":
+        old_shared = float(expense[3])
+        old_personal = float(expense[4])
+        if old_shared == 0:
+            type_hint = "personal"
+        elif old_personal == 0:
+            type_hint = "shared"
+        else:
+            type_hint = f"mixed (personal={old_personal:.2f} fixed)"
         await query.message.reply_text(
-            f"💰 Current amount: `{expense[2]}`\n\n"
-            f"Enter new amount:",
+            f"💰 Current total: `{expense[2]}`\n"
+            f"   Type: {type_hint}\n\n"
+            f"Enter new total amount:",
             parse_mode="Markdown"
         )
         return ENTER_NEW_VALUE
@@ -418,11 +428,85 @@ async def enter_new_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if field == "amount":
         try:
             new_value = float(update.message.text.strip())
-            old_value = expense[2]
+            if new_value <= 0:
+                await update.message.reply_text("❌ Amount must be > 0!")
+                return ENTER_NEW_VALUE
+
+            old_shared = float(expense[3])
+            old_personal = float(expense[4])
+            split_type = expense[5]
+            group_id = expense[9]
+            expense_date = expense[7]
+
+            if old_shared == 0:
+                new_shared = 0.0
+                new_personal = new_value
+            elif old_personal == 0:
+                new_shared = new_value
+                new_personal = 0.0
+            else:
+                new_personal = old_personal
+                new_shared = new_value - old_personal
+                if new_shared < 0:
+                    await update.message.reply_text(
+                        f"❌ New total must be ≥ {old_personal:.2f} "
+                        f"(fixed personal portion)!"
+                    )
+                    return ENTER_NEW_VALUE
+
+            old_splits = get_expense_splits(expense_id)
+
             update_expense(expense_id, "total_amount", new_value)
+            update_expense(expense_id, "shared_amount", new_shared)
+            update_expense(expense_id, "personal_amount", new_personal)
+            delete_expense_splits(expense_id)
+
+            if new_shared > 0:
+                if split_type == 'equal':
+                    members = get_active_members_at_date(
+                        group_id, expense_date
+                    )
+                    if members:
+                        per_person = round(new_shared / len(members), 2)
+                        for m in members:
+                            add_expense_split(expense_id, m[0], per_person)
+                elif split_type == 'specific':
+                    if old_splits:
+                        per_person = round(new_shared / len(old_splits), 2)
+                        for row in old_splits:
+                            add_expense_split(expense_id, row[0], per_person)
+                    else:
+                        members = get_active_members_at_date(
+                            group_id, expense_date
+                        )
+                        if members:
+                            per_person = round(new_shared / len(members), 2)
+                            for m in members:
+                                add_expense_split(expense_id, m[0], per_person)
+                elif split_type == 'custom':
+                    if old_splits:
+                        for row in old_splits:
+                            pct = float(row[2]) if row[2] else 0
+                            if pct > 0:
+                                amt = round(new_shared * pct / 100, 2)
+                                add_expense_split(
+                                    expense_id, row[0], amt, pct
+                                )
+                    else:
+                        members = get_active_members_at_date(
+                            group_id, expense_date
+                        )
+                        if members:
+                            per_person = round(new_shared / len(members), 2)
+                            for m in members:
+                                add_expense_split(expense_id, m[0], per_person)
+
             await update.message.reply_text(
                 f"✅ *Amount updated!*\n\n"
-                f"{old_value} → {new_value}",
+                f"Total  : `{expense[2]}` → `{new_value}`\n"
+                f"Shared : `{old_shared:.2f}` → `{new_shared:.2f}`\n"
+                f"Personal: `{old_personal:.2f}` → `{new_personal:.2f}`\n\n"
+                f"Splits recalculated ✅",
                 parse_mode="Markdown"
             )
         except ValueError:
@@ -462,17 +546,200 @@ async def enter_new_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+def _build_edit_specific_keyboard(members, selected):
+    keyboard = []
+    for uid, name in members:
+        icon = "✅" if selected.get(uid, True) else "❌"
+        keyboard.append([InlineKeyboardButton(
+            f"{icon} {name}", callback_data=f"edspctoggle_{uid}"
+        )])
+    keyboard.append([InlineKeyboardButton(
+        "✔️ Confirm Selection", callback_data="edspctoggle_confirm"
+    )])
+    return InlineKeyboardMarkup(keyboard)
+
+
 async def enter_new_split(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     new_split = query.data.split("_")[1]
     expense = context.user_data['editing_expense']
-    update_expense(expense[0], "split_type", new_split)
+    expense_id = expense[0]
+    group_id = expense[9]
+    expense_date = expense[7]
+    shared = float(expense[3])
 
-    await query.message.reply_text(
-        f"✅ *Split type updated!*\n\n"
-        f"{expense[5]} → {new_split}",
+    context.user_data['edit_split_type'] = new_split
+
+    if new_split == 'equal':
+        members = get_active_members_at_date(group_id, expense_date)
+        delete_expense_splits(expense_id)
+        update_expense(expense_id, "split_type", "equal")
+        per_person = 0.0
+        if members and shared > 0:
+            per_person = round(shared / len(members), 2)
+            for m in members:
+                add_expense_split(expense_id, m[0], per_person)
+        names = ", ".join(m[1] for m in members) if members else "none"
+        await query.message.reply_text(
+            f"✅ *Split updated to Equal!*\n\n"
+            f"Members: {names}\n"
+            f"Each: `{per_person:.2f}`\n\n"
+            f"Splits recalculated ✅",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+
+    elif new_split == 'specific':
+        members = get_active_members_at_date(group_id, expense_date)
+        context.user_data['edit_specific_members'] = [
+            (m[0], m[1]) for m in members
+        ]
+        context.user_data['edit_specific_selected'] = {
+            m[0]: True for m in members
+        }
+        names = ", ".join(m[1] for m in members)
+        keyboard = _build_edit_specific_keyboard(
+            context.user_data['edit_specific_members'],
+            context.user_data['edit_specific_selected']
+        )
+        await query.message.reply_text(
+            f"👥 *Select members for this expense:*\n\n"
+            f"Active: {names}\n\n"
+            f"Tap to toggle. ✅ = included  ❌ = excluded.",
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
+        return SELECT_SPLIT_MEMBERS_EDIT
+
+    else:  # custom
+        members = get_active_members_at_date(group_id, expense_date)
+        context.user_data['edit_custom_members'] = [
+            (m[0], m[1]) for m in members
+        ]
+        n = len(members)
+        names = "  ".join(m[1] for m in members)
+        pct_each = round(100 / n) if n > 0 else 0
+        example = " ".join([str(pct_each)] * n)
+        await query.message.reply_text(
+            f"📊 *Custom Percentages*\n\n"
+            f"Members: `{names}`\n\n"
+            f"Enter % for each *(space-separated)*, must total 100%\n\n"
+            f"Example: `{example}`",
+            parse_mode="Markdown"
+        )
+        return ENTER_CUSTOM_PCT_EDIT
+
+
+async def toggle_edit_split_member(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    query = update.callback_query
+    await query.answer()
+
+    suffix = query.data[len("edspctoggle_"):]
+    expense = context.user_data['editing_expense']
+
+    if suffix == "confirm":
+        selected = context.user_data.get('edit_specific_selected', {})
+        members = context.user_data.get('edit_specific_members', [])
+        chosen = [
+            (uid, name) for uid, name in members
+            if selected.get(uid, True)
+        ]
+
+        if not chosen:
+            await query.answer(
+                "⚠️ Select at least one member!", show_alert=True
+            )
+            return SELECT_SPLIT_MEMBERS_EDIT
+
+        expense_id = expense[0]
+        shared = float(expense[3])
+        per_person = round(shared / len(chosen), 2)
+
+        delete_expense_splits(expense_id)
+        update_expense(expense_id, "split_type", "specific")
+        for uid, _name in chosen:
+            add_expense_split(expense_id, uid, per_person)
+
+        names_str = ", ".join(n for _, n in chosen)
+        await query.message.reply_text(
+            f"✅ *Split updated to Specific!*\n\n"
+            f"Members: {names_str}\n"
+            f"Each: `{per_person:.2f}`\n\n"
+            f"Splits recalculated ✅",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+
+    uid = int(suffix)
+    selected = context.user_data.get('edit_specific_selected', {})
+    selected[uid] = not selected.get(uid, True)
+    context.user_data['edit_specific_selected'] = selected
+
+    members = context.user_data.get('edit_specific_members', [])
+    keyboard = _build_edit_specific_keyboard(members, selected)
+    await query.message.edit_reply_markup(reply_markup=keyboard)
+    return SELECT_SPLIT_MEMBERS_EDIT
+
+
+async def enter_edit_custom_pct(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    expense = context.user_data['editing_expense']
+    members = context.user_data.get('edit_custom_members', [])
+    parts = update.message.text.strip().split()
+
+    if len(parts) != len(members):
+        names = "  ".join(name for _, name in members)
+        await update.message.reply_text(
+            f"❌ Expected *{len(members)}* values, got *{len(parts)}*.\n\n"
+            f"Members: `{names}`\n"
+            f"Enter {len(members)} numbers separated by spaces:",
+            parse_mode="Markdown"
+        )
+        return ENTER_CUSTOM_PCT_EDIT
+
+    try:
+        percentages = [float(p) for p in parts]
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Invalid numbers. Example: `50 25 25`",
+            parse_mode="Markdown"
+        )
+        return ENTER_CUSTOM_PCT_EDIT
+
+    total = sum(percentages)
+    if abs(total - 100) > 0.5:
+        await update.message.reply_text(
+            f"❌ *Total must be 100%*\n\n"
+            f"Your total: `{total:.1f}%`\n"
+            f"Please correct and try again:",
+            parse_mode="Markdown"
+        )
+        return ENTER_CUSTOM_PCT_EDIT
+
+    expense_id = expense[0]
+    shared = float(expense[3])
+
+    delete_expense_splits(expense_id)
+    update_expense(expense_id, "split_type", "custom")
+
+    breakdown = []
+    for i, (uid, name) in enumerate(members):
+        if i < len(percentages) and percentages[i] > 0:
+            amt = round(shared * percentages[i] / 100, 2)
+            add_expense_split(expense_id, uid, amt, percentages[i])
+            breakdown.append(
+                f"   {name}: `{amt:.2f}` ({percentages[i]:.0f}%)"
+            )
+
+    await update.message.reply_text(
+        f"✅ *Split updated to Custom %!*\n\n"
+        + "\n".join(breakdown) + "\n\n"
+        f"Splits recalculated ✅",
         parse_mode="Markdown"
     )
     return ConversationHandler.END
@@ -600,7 +867,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def register_edit_handlers(app):
-    # Edit expense conversation
     edit_conv = ConversationHandler(
         entry_points=[
             MessageHandler(filters.Regex("^✏️ Edit Expense$"), edit_expense_start),
@@ -651,6 +917,18 @@ def register_edit_handlers(app):
                     confirm_delete, pattern="^confirmdelete_"
                 )
             ],
+            SELECT_SPLIT_MEMBERS_EDIT: [
+                CallbackQueryHandler(
+                    toggle_edit_split_member, pattern="^edspctoggle_"
+                )
+            ],
+            ENTER_CUSTOM_PCT_EDIT: [
+                MessageHandler(MENU_BUTTON_FILTER, exit_to_menu),
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    enter_edit_custom_pct
+                ),
+            ],
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
@@ -658,7 +936,6 @@ def register_edit_handlers(app):
         allow_reentry=True
     )
 
-    # Admin deleted log conversation
     admin_conv = ConversationHandler(
         entry_points=[
             MessageHandler(
