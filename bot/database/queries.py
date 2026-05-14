@@ -529,6 +529,7 @@ def get_expenses_for_report(group_id, start_date, end_date):
         WHERE e.group_id = %s
         AND e.expense_date BETWEEN %s AND %s
         AND e.is_deleted = FALSE
+        AND e.split_type != 'settlement'
         ORDER BY e.expense_date
     """, (group_id, start_date, end_date))
     expenses = cursor.fetchall()
